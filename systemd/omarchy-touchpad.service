@@ -1,0 +1,15 @@
+[Unit]
+Description=Omarchy browser touchpad (Rust)
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Work/personal/omarchy-touchpad
+Environment=TOUCHPAD_HOST=0.0.0.0
+Environment=TOUCHPAD_PORT=8765
+EnvironmentFile=-%h/.config/omarchy-touchpad.env
+ExecStart=%h/Work/personal/omarchy-touchpad/target/release/omarchy-touchpad
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

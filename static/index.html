@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Omarchy Touchpad</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Omarchy Touchpad</h1>
+          <p id="status">Connecting</p>
+        </div>
+        <button id="reconnect" type="button">Reconnect</button>
+      </header>
+
+      <section id="pad" class="pad" aria-label="Touchpad">
+        <div class="pad-hint">
+          <strong>One-finger move</strong>
+          <span>Tap for left click · Two-finger scroll · Double tap for right click</span>
+        </div>
+      </section>
+
+      <section class="keyboard">
+        <div class="paste-row">
+          <textarea id="textInput" rows="2" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Type or dictate text"></textarea>
+          <button id="sendText" type="button">Send</button>
+        </div>
+        <div class="primary-keys">
+          <button data-key="Enter" type="button">Enter</button>
+          <button data-key="Backspace" type="button">⌫</button>
+          <button id="toggleKeys" type="button" aria-expanded="false">Keys</button>
+        </div>
+      </section>
+
+      <div id="keyDrawer" class="drawer-overlay" aria-hidden="true">
+        <div class="drawer-backdrop"></div>
+        <div class="drawer-sheet">
+          <div class="drawer-header">
+            <span class="drawer-title">Control Keys</span>
+            <button id="closeDrawer" type="button" class="drawer-close">Done</button>
+          </div>
+          <div class="drawer-hint">Hold multiple keys to combine</div>
+          <div class="keys">
+            <button data-key="Escape" type="button">Esc</button>
+            <button data-key="Tab" type="button">Tab</button>
+            <button data-key="Enter" type="button">Enter</button>
+            <button data-key="Backspace" type="button">⌫</button>
+            <button data-key="MetaLeft" type="button">Super</button>
+            <button data-key="ControlLeft" type="button">Ctrl</button>
+            <button data-key="ShiftLeft" type="button">Shift</button>
+            <button data-key="AltLeft" type="button">Alt</button>
+            <button data-key="Space" type="button">Space</button>
+            <button data-key="ArrowUp" type="button">↑</button>
+            <button data-key="ArrowLeft" type="button">←</button>
+            <button data-key="ArrowDown" type="button">↓</button>
+            <button data-key="ArrowRight" type="button">→</button>
+            <button data-key="KeyA" type="button">A</button>
+            <button data-key="KeyC" type="button">C</button>
+            <button data-key="KeyV" type="button">V</button>
+            <button data-key="KeyX" type="button">X</button>
+            <button data-key="KeyZ" type="button">Z</button>
+            <button data-key="KeyS" type="button">S</button>
+            <button data-key="KeyT" type="button">T</button>
+            <button data-key="KeyW" type="button">W</button>
+            <button data-key="KeyF" type="button">F</button>
+          </div>
+          <button id="releaseAll" type="button" class="release-all">Release All Keys</button>
+        </div>
+      </div>
+    </main>
+    <script src="/app.js?v2"></script>
+  </body>
+</html>
