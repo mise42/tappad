@@ -1,14 +1,13 @@
 # Omarchy Touchpad
 
 Browser touchpad for `omarchy`. It serves a small mobile web UI and sends input
-events to Hyprland through `ydotoold`. The server is a zero-dependency Node.js
-app.
+events to Hyprland via a Rust server using Linux `uinput`.
 
 ## Run
 
 ```bash
 cd ~/Work/personal/omarchy-touchpad
-npm start
+cargo run --release
 ```
 
 Open from an iPad or phone on the same LAN/Tailnet:
@@ -20,7 +19,7 @@ http://100.113.201.90:8765
 For a shared Tailnet, use a token:
 
 ```bash
-TOUCHPAD_TOKEN='change-me' npm start
+TOUCHPAD_TOKEN='change-me' cargo run --release
 ```
 
 Then open:

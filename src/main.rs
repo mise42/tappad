@@ -16,9 +16,11 @@ use tokio::sync::Mutex;
 use tokio::time::{sleep, timeout};
 use tracing::{info, warn};
 
+mod commands;
 mod protocol;
 mod uinput;
 
+use commands::CommandRegistry;
 use protocol::{ClientMessage, ServerMessage};
 use uinput::UinputDevice;
 
@@ -31,6 +33,7 @@ struct AppState {
     uinput: Mutex<UinputDevice>,
     token: Option<String>,
     active_client: Mutex<Option<(String, tokio::time::Instant)>>,
+    commands: CommandRegistry,
 }
 
 static CLIENT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -178,6 +181,62 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: S
                     }
                 });
             }
+            ClientMessage::Exec { command } => {
+                drop(uinput);
+                let client_id_clone = client_id.clone();
+                info!("exec request from {}: {}", client_id, command);
+                tokio::spawn(async move {
+                    let output = tokio::process::Command::new("sh")
+                        .arg("-c")
+                        .arg(&command)
+                        .output()
+                        .await;
+                    match output {
+                        Ok(o) if o.status.success() => {}
+                        Ok(o) => {
+                            warn!(
+                                "exec failed for {}: stderr: {}",
+                                client_id_clone,
+                                String::from_utf8_lossy(&o.stderr)
+                            );
+                        }
+                        Err(e) => {
+                            warn!("exec error for {}: {}", client_id_clone, e);
+                        }
+                    }
+                });
+            }
+            ClientMessage::Cmd { action } => {
+                drop(uinput);
+                let client_id_clone = client_id.clone();
+                let command = state.commands.resolve(&action).map(|s| s.to_string());
+                if let Some(command) = command {
+                    info!("cmd request from {}: {} -> {}", client_id, action, command);
+                    tokio::spawn(async move {
+                        let output = tokio::process::Command::new("sh")
+                            .arg("-c")
+                            .arg(&command)
+                            .output()
+                            .await;
+                        match output {
+                            Ok(o) if o.status.success() => {}
+                            Ok(o) => {
+                                warn!(
+                                    "cmd failed for {} ({}): stderr: {}",
+                                    client_id_clone,
+                                    action,
+                                    String::from_utf8_lossy(&o.stderr)
+                                );
+                            }
+                            Err(e) => {
+                                warn!("cmd error for {} ({}): {}", client_id_clone, action, e);
+                            }
+                        }
+                    });
+                } else {
+                    warn!("unknown cmd action from {}: {}", client_id, action);
+                }
+            }
         }
     }
 
@@ -293,6 +352,7 @@ async fn main() {
         uinput: Mutex::new(uinput),
         token,
         active_client: Mutex::new(None),
+        commands: CommandRegistry::new(),
     });
 
     let app = Router::new()

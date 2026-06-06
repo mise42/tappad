@@ -15,6 +15,10 @@ pub enum ClientMessage {
     Text { value: String },
     #[serde(rename = "paste")]
     Paste { value: String },
+    #[serde(rename = "exec")]
+    Exec { command: String },
+    #[serde(rename = "cmd")]
+    Cmd { action: String },
 }
 
 #[derive(Debug, Clone, Serialize)]

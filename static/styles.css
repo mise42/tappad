@@ -33,7 +33,7 @@ textarea {
 .shell {
   min-height: 100svh;
   display: grid;
-  grid-template-rows: auto minmax(220px, 1fr) auto;
+  grid-template-rows: auto auto 1fr auto;
   gap: 12px;
   padding: max(18px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
 }
@@ -69,7 +69,8 @@ body[data-state="closed"] #status {
 
 .pad {
   position: relative;
-  min-height: 220px;
+  height: 100%;
+  min-height: 0;
   border: 1px solid rgba(245, 240, 232, 0.18);
   border-radius: 8px;
   background:
@@ -141,7 +142,7 @@ button.pressed {
   padding: 0 16px;
 }
 
-.keyboard {
+.bottom-bar {
   display: grid;
   gap: 10px;
 }
@@ -173,85 +174,167 @@ textarea:focus {
   min-height: 52px;
 }
 
-.primary-keys {
+.workspace-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
 }
 
-.drawer-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
+.primary-keys {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tab-bar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tab-btn {
+  background: rgba(245, 240, 232, 0.06);
+}
+
+.tab-btn.active {
+  background: rgba(135, 214, 141, 0.22);
+  border-color: rgba(135, 214, 141, 0.45);
+}
+
+.tab-panels {
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+}
+
+.tab-panel {
   display: none;
+}
+
+.tab-panel.active {
+  display: grid;
+  grid-template-rows: 1fr;
+  min-height: 0;
+}
+
+#panel-main {
+  grid-template-rows: 1fr auto;
+  gap: 12px;
+}
+
+.panel-scroll {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  min-height: 0;
+}
+
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding: 8px 0;
+  align-items: center;
+  justify-items: center;
+}
+
+.media-btn {
+  min-height: 72px;
+  min-width: 72px;
+  border-radius: 50%;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(245, 240, 232, 0.08);
+  border: 1px solid rgba(245, 240, 232, 0.16);
+}
+
+.media-btn:active {
+  background: rgba(135, 214, 141, 0.22);
+  border-color: rgba(135, 214, 141, 0.45);
+}
+
+.cmd-rec-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 8px 0;
+  align-items: center;
+  justify-items: center;
+}
+
+.cmd-rec-controls {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cmd-rec-btn,
+.cmd-stop-btn,
+.cmd-folder-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  padding: 0;
+  background: rgba(245, 240, 232, 0.08);
+  border: 1px solid rgba(245, 240, 232, 0.16);
+}
+
+.cmd-rec-btn:active,
+.cmd-stop-btn:active,
+.cmd-folder-btn:active {
+  transform: translateY(1px);
+  background: rgba(135, 214, 141, 0.22);
+  border-color: rgba(135, 214, 141, 0.45);
+}
+
+.cmd-stop-btn:active {
+  background: rgba(255, 179, 138, 0.22);
+  border-color: rgba(255, 179, 138, 0.45);
+}
+
+.cmd-folder-btn:active {
+  background: rgba(194, 140, 70, 0.22);
+  border-color: rgba(194, 140, 70, 0.45);
+}
+
+.cmd-rec-btn svg,
+.cmd-stop-btn svg,
+.cmd-folder-btn svg {
+  width: 24px;
+  height: 24px;
+  opacity: 0.9;
   pointer-events: none;
 }
 
-.drawer-overlay.open {
-  display: flex;
-  pointer-events: auto;
+.cmd-rec-btn span,
+.cmd-stop-btn span,
+.cmd-folder-btn span {
+  font-size: 11px;
+  color: #b8c1b8;
+  pointer-events: none;
 }
 
-.drawer-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  opacity: 0;
-  transition: opacity 0.25s ease;
+.media-btn svg {
+  width: 28px;
+  height: 28px;
+  opacity: 0.9;
+  pointer-events: none;
 }
 
-.drawer-overlay.open .drawer-backdrop {
-  opacity: 1;
+.media-btn-primary {
+  min-height: 88px;
+  min-width: 88px;
+  background: rgba(135, 214, 141, 0.15);
+  border-color: rgba(135, 214, 141, 0.4);
 }
 
-.drawer-sheet {
-  position: relative;
-  margin-top: auto;
-  width: 100%;
-  max-height: 70svh;
-  background: #1a1f1d;
-  border-top: 1px solid rgba(245, 240, 232, 0.14);
-  border-radius: 18px 18px 0 0;
-  padding: 16px max(16px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
-  transform: translateY(100%);
-  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
-  display: grid;
-  gap: 12px;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-}
-
-.drawer-overlay.open .drawer-sheet {
-  transform: translateY(0);
-}
-
-.drawer-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: 4px;
-}
-
-.drawer-title {
-  font-weight: 640;
-  font-size: 17px;
-  color: #f5f0e8;
-}
-
-.drawer-close {
-  min-height: 36px;
-  padding: 0 14px;
-  font-size: 15px;
-  border-radius: 8px;
-  background: rgba(245, 240, 232, 0.1);
-  border: 1px solid rgba(245, 240, 232, 0.16);
-  color: #f5f0e8;
-}
-
-.drawer-hint {
-  font-size: 13px;
-  color: #8a958a;
-  margin-top: -4px;
+.media-btn-primary svg {
+  width: 36px;
+  height: 36px;
 }
 
 .release-all {
@@ -268,10 +351,6 @@ textarea:focus {
     max-width: 980px;
     margin: 0 auto;
   }
-
-  .pad {
-    min-height: 420px;
-  }
 }
 
 @media (min-width: 760px) and (orientation: landscape) {
@@ -282,16 +361,11 @@ textarea:focus {
   .shell {
     min-height: 100svh;
     max-width: 980px;
-    grid-template-columns: minmax(420px, 1.35fr) minmax(260px, 0.8fr);
-    grid-template-rows: auto auto;
+    grid-template-rows: auto auto 1fr;
     align-content: center;
     gap: 14px;
     padding-top: max(14px, env(safe-area-inset-top));
     padding-bottom: max(14px, env(safe-area-inset-bottom));
-  }
-
-  .topbar {
-    grid-column: 1 / -1;
   }
 
   h1 {
@@ -303,11 +377,7 @@ textarea:focus {
   }
 
   .pad {
-    min-height: clamp(300px, 56svh, 390px);
-  }
-
-  .keyboard {
-    align-self: start;
+    min-height: 0;
   }
 
   textarea {
@@ -321,15 +391,22 @@ textarea:focus {
   }
 
   .keys {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
-  .drawer-sheet {
-    max-height: 60svh;
-    max-width: 480px;
-    margin-left: auto;
-    margin-right: auto;
-    border-radius: 18px;
-    margin-bottom: 14px;
+  .media-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 24px;
+    padding: 16px 0;
+  }
+
+  .media-btn {
+    min-height: 80px;
+    min-width: 80px;
+  }
+
+  .media-btn-primary {
+    min-height: 96px;
+    min-width: 96px;
   }
 }

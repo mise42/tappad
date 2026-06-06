@@ -2,7 +2,7 @@ use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::OpenOptionsExt;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 const EV_KEY: u16 = 0x01;
 const EV_REL: u16 = 0x02;

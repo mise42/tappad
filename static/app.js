@@ -3,9 +3,6 @@ const reconnectButton = document.getElementById("reconnect");
 const pad = document.getElementById("pad");
 const textInput = document.getElementById("textInput");
 const sendTextButton = document.getElementById("sendText");
-const toggleKeysButton = document.getElementById("toggleKeys");
-const keyDrawer = document.getElementById("keyDrawer");
-const closeDrawerButton = document.getElementById("closeDrawer");
 const releaseAllButton = document.getElementById("releaseAll");
 
 const query = new URLSearchParams(window.location.search);
@@ -210,24 +207,31 @@ textInput.addEventListener("keydown", (event) => {
   }
 });
 
-function openDrawer() {
-  keyDrawer.classList.add("open");
-  keyDrawer.setAttribute("aria-hidden", "false");
-  toggleKeysButton.setAttribute("aria-expanded", "true");
+// Tab switching
+function switchTab(tabName) {
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === tabName);
+  });
+  document.querySelectorAll(".tab-panel").forEach((panel) => {
+    panel.classList.toggle("active", panel.id === "panel-" + tabName);
+  });
+  if (tabName !== "keys") {
+    releaseAllKeys();
+  }
 }
 
-function closeDrawer() {
-  keyDrawer.classList.remove("open");
-  keyDrawer.setAttribute("aria-hidden", "true");
-  toggleKeysButton.setAttribute("aria-expanded", "false");
-  releaseAllKeys();
-}
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+});
 
-toggleKeysButton.addEventListener("click", openDrawer);
-closeDrawerButton.addEventListener("click", closeDrawer);
 releaseAllButton.addEventListener("click", releaseAllKeys);
 
-keyDrawer.querySelector(".drawer-backdrop").addEventListener("click", closeDrawer);
+// Command buttons
+document.querySelectorAll("[data-cmd]").forEach((button) => {
+  button.addEventListener("click", () => {
+    send({ type: "cmd", action: button.dataset.cmd });
+  });
+});
 
 reconnectButton.addEventListener("click", connect);
 window.addEventListener("pagehide", () => {
