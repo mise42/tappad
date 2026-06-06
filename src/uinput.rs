@@ -346,7 +346,7 @@ impl UinputDevice {
         self.syn()
     }
 
-    pub fn click(&mut self, button: &str) -> io::Result<()> {
+    pub fn click(&mut self, button: &str, _click_count: u8) -> io::Result<()> {
         debug!("click button={}", button);
         let code = match button {
             "right" => BTN_RIGHT,

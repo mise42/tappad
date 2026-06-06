@@ -8,7 +8,11 @@ pub enum ClientMessage {
     #[serde(rename = "wheel")]
     Wheel { dy: f64 },
     #[serde(rename = "click")]
-    Click { button: String },
+    Click {
+        button: String,
+        #[serde(default = "default_click_count", rename = "clickCount")]
+        click_count: u8,
+    },
     #[serde(rename = "key")]
     Key { code: String, #[serde(default)] down: bool },
     #[serde(rename = "text")]
@@ -19,6 +23,10 @@ pub enum ClientMessage {
     Exec { command: String },
     #[serde(rename = "cmd")]
     Cmd { action: String },
+}
+
+fn default_click_count() -> u8 {
+    1
 }
 
 #[derive(Debug, Clone, Serialize)]

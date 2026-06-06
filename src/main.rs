@@ -1,28 +1,32 @@
 use axum::{
+    Router,
     extract::{
-        ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
         Query, State,
+        ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
     },
-    http::{header, StatusCode, Uri},
+    http::{StatusCode, Uri, header},
     response::IntoResponse,
     routing::get,
-    Router,
 };
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::sync::Mutex;
-use tokio::time::{sleep, timeout};
 use tracing::{info, warn};
 
+#[cfg(target_os = "linux")]
+use tokio::time::{sleep, timeout};
+
 mod commands;
+mod input;
 mod protocol;
+#[cfg(target_os = "linux")]
 mod uinput;
 
 use commands::CommandRegistry;
+use input::InputDevice;
 use protocol::{ClientMessage, ServerMessage};
-use uinput::UinputDevice;
 
 #[derive(Debug, serde::Deserialize)]
 struct WsQuery {
@@ -30,7 +34,7 @@ struct WsQuery {
 }
 
 struct AppState {
-    uinput: Mutex<UinputDevice>,
+    input: Mutex<InputDevice>,
     token: Option<String>,
     active_client: Mutex<Option<(String, tokio::time::Instant)>>,
     commands: CommandRegistry,
@@ -43,10 +47,27 @@ fn next_client_id() -> String {
 }
 
 fn get_hostname() -> String {
-    std::fs::read_to_string("/proc/sys/kernel/hostname")
-        .unwrap_or_default()
-        .trim()
-        .to_string()
+    if let Ok(hostname) = std::fs::read_to_string("/proc/sys/kernel/hostname") {
+        let hostname = hostname.trim();
+        if !hostname.is_empty() {
+            return hostname.to_string();
+        }
+    }
+
+    if let Ok(hostname) = std::env::var("HOSTNAME") {
+        let hostname = hostname.trim();
+        if !hostname.is_empty() {
+            return hostname.to_string();
+        }
+    }
+
+    std::process::Command::new("hostname")
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|hostname| hostname.trim().to_string())
+        .filter(|hostname| !hostname.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 async fn ws_handler(
@@ -57,13 +78,7 @@ async fn ws_handler(
     if let Some(expected) = &state.token {
         match &query.token {
             Some(provided) if provided == expected => {}
-            _ => {
-                return (
-                    axum::http::StatusCode::FORBIDDEN,
-                    "Forbidden",
-                )
-                    .into_response()
-            }
+            _ => return (axum::http::StatusCode::FORBIDDEN, "Forbidden").into_response(),
         }
     }
     let client_id = next_client_id();
@@ -76,7 +91,9 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: S
     let hostname = get_hostname();
     let ready = ServerMessage::ready(hostname);
     let _ = socket
-        .send(WsMessage::Text(serde_json::to_string(&ready).unwrap().into()))
+        .send(WsMessage::Text(
+            serde_json::to_string(&ready).unwrap().into(),
+        ))
         .await;
 
     while let Some(Ok(msg)) = socket.recv().await {
@@ -125,29 +142,37 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: S
             continue;
         }
 
-        let mut uinput = state.uinput.lock().await;
+        let mut input = state.input.lock().await;
 
         match msg {
             ClientMessage::Move { dx, dy } => {
-                let _ = uinput.move_rel(dx.round() as i32, dy.round() as i32);
+                let _ = input.move_rel(dx.round() as i32, dy.round() as i32);
             }
             ClientMessage::Wheel { dy } => {
-                let _ = uinput.scroll(dy.round() as i32);
+                let _ = input.scroll(dy.round() as i32);
             }
-            ClientMessage::Click { button } => {
-                let _ = uinput.click(&button);
+            ClientMessage::Click {
+                button,
+                click_count,
+            } => {
+                let _ = input.click(&button, click_count);
             }
             ClientMessage::Key { code, down } => {
-                let _ = uinput.key(&code, down);
+                let _ = input.key(&code, down);
             }
             ClientMessage::Text { value } => {
-                info!("type_text request from {}: '{}' ({} chars)", client_id, value, value.chars().count());
-                // For non-ASCII text (e.g. Chinese), fall back to paste/clipboard
-                // since uinput can only simulate physical keycodes.
-                let has_non_ascii = value.chars().any(|c| !uinput.is_typeable(c));
+                info!(
+                    "type_text request from {}: '{}' ({} chars)",
+                    client_id,
+                    value,
+                    value.chars().count()
+                );
+                // Backends that cannot type a character directly may fall back
+                // to the clipboard path.
+                let has_non_ascii = value.chars().any(|c| !input.is_typeable(c));
                 if has_non_ascii {
                     info!("text contains non-ASCII chars, falling back to paste");
-                    drop(uinput);
+                    drop(input);
                     let text = if value.len() > 12000 {
                         value[..12000].to_string()
                     } else {
@@ -160,14 +185,14 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: S
                         }
                     });
                 } else {
-                    match uinput.type_text(&value) {
+                    match input.type_text(&value) {
                         Ok(_) => info!("type_text completed"),
                         Err(e) => warn!("type_text failed: {}", e),
                     }
                 }
             }
             ClientMessage::Paste { value } => {
-                drop(uinput);
+                drop(input);
                 let text = if value.len() > 12000 {
                     value[..12000].to_string()
                 } else {
@@ -182,7 +207,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: S
                 });
             }
             ClientMessage::Exec { command } => {
-                drop(uinput);
+                drop(input);
                 let client_id_clone = client_id.clone();
                 info!("exec request from {}: {}", client_id, command);
                 tokio::spawn(async move {
@@ -207,7 +232,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: S
                 });
             }
             ClientMessage::Cmd { action } => {
-                drop(uinput);
+                drop(input);
                 let client_id_clone = client_id.clone();
                 let command = state.commands.resolve(&action).map(|s| s.to_string());
                 if let Some(command) = command {
@@ -247,67 +272,79 @@ async fn do_paste(
     state: Arc<AppState>,
     text: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use std::process::Stdio;
-    use tokio::io::AsyncWriteExt;
-    use tokio::process::Command;
-
-    // Set clipboard (for browsers/GUI apps)
-    let mut child = Command::new("wl-copy")
-        .arg("--type")
-        .arg("text/plain;charset=utf-8")
-        .stdin(Stdio::piped())
-        .spawn()?;
-
-    if let Some(stdin) = child.stdin.take() {
-        let mut stdin = stdin;
-        stdin.write_all(text.as_bytes()).await?;
-        stdin.shutdown().await?;
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = state;
+        let _ = text;
+        return Err("paste is not supported by this target backend yet".into());
     }
 
-    let result = timeout(Duration::from_secs(2), child.wait()).await;
-    match result {
-        Ok(Ok(status)) if status.success() => {}
-        Ok(Ok(_)) => return Err("wl-copy failed".into()),
-        Ok(Err(e)) => return Err(e.into()),
-        Err(_) => {
-            child.kill().await.ok();
-            return Err("wl-copy timeout".into());
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Stdio;
+        use tokio::io::AsyncWriteExt;
+        use tokio::process::Command;
+
+        // Set clipboard (for browsers/GUI apps)
+        let mut child = Command::new("wl-copy")
+            .arg("--type")
+            .arg("text/plain;charset=utf-8")
+            .stdin(Stdio::piped())
+            .spawn()?;
+
+        if let Some(stdin) = child.stdin.take() {
+            let mut stdin = stdin;
+            stdin.write_all(text.as_bytes()).await?;
+            stdin.shutdown().await?;
         }
+
+        let result = timeout(Duration::from_secs(2), child.wait()).await;
+        match result {
+            Ok(Ok(status)) if status.success() => {}
+            Ok(Ok(_)) => return Err("wl-copy failed".into()),
+            Ok(Err(e)) => return Err(e.into()),
+            Err(_) => {
+                child.kill().await.ok();
+                return Err("wl-copy timeout".into());
+            }
+        }
+
+        // Set primary selection (for terminals via Shift+Insert)
+        let mut child_primary = Command::new("wl-copy")
+            .arg("--primary")
+            .stdin(Stdio::piped())
+            .spawn()?;
+
+        if let Some(stdin) = child_primary.stdin.take() {
+            let mut stdin = stdin;
+            stdin.write_all(text.as_bytes()).await?;
+            stdin.shutdown().await?;
+        }
+
+        let _ = timeout(Duration::from_secs(2), child_primary.wait()).await;
+
+        sleep(Duration::from_millis(250)).await;
+
+        let mut input = state.input.lock().await;
+        // Send Shift+Insert (works in terminals and most GTK/Qt apps)
+        input.key("ShiftLeft", true)?;
+        input.key("Insert", true)?;
+        sleep(Duration::from_millis(35)).await;
+        input.key("Insert", false)?;
+        sleep(Duration::from_millis(35)).await;
+        input.key("ShiftLeft", false)?;
+
+        Ok(())
     }
-
-    // Set primary selection (for terminals via Shift+Insert)
-    let mut child_primary = Command::new("wl-copy")
-        .arg("--primary")
-        .stdin(Stdio::piped())
-        .spawn()?;
-
-    if let Some(stdin) = child_primary.stdin.take() {
-        let mut stdin = stdin;
-        stdin.write_all(text.as_bytes()).await?;
-        stdin.shutdown().await?;
-    }
-
-    let _ = timeout(Duration::from_secs(2), child_primary.wait()).await;
-
-    sleep(Duration::from_millis(250)).await;
-
-    let mut uinput = state.uinput.lock().await;
-    // Send Shift+Insert (works in terminals and most GTK/Qt apps)
-    uinput.key("ShiftLeft", true)?;
-    uinput.key("Insert", true)?;
-    sleep(Duration::from_millis(35)).await;
-    uinput.key("Insert", false)?;
-    sleep(Duration::from_millis(35)).await;
-    uinput.key("ShiftLeft", false)?;
-
-    Ok(())
 }
 
 async fn static_fallback(uri: Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
-    let file_path = std::path::PathBuf::from("static").join(
-        if path.is_empty() || path == "/" { "index.html" } else { path }
-    );
+    let file_path = std::path::PathBuf::from("static").join(if path.is_empty() || path == "/" {
+        "index.html"
+    } else {
+        path
+    });
 
     match tokio::fs::read(&file_path).await {
         Ok(body) => {
@@ -325,13 +362,15 @@ async fn static_fallback(uri: Uri) -> impl IntoResponse {
                     (header::CACHE_CONTROL, "no-store"),
                 ],
                 body,
-            ).into_response()
+            )
+                .into_response()
         }
         Err(_) => (
             StatusCode::NOT_FOUND,
             [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
             "Not found\n",
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 
@@ -346,10 +385,10 @@ async fn main() {
         .unwrap_or(8765u16);
     let token = std::env::var("TOUCHPAD_TOKEN").ok();
 
-    let uinput = UinputDevice::new().expect("Failed to initialize uinput device");
+    let input = InputDevice::new().expect("Failed to initialize input device");
 
     let state = Arc::new(AppState {
-        uinput: Mutex::new(uinput),
+        input: Mutex::new(input),
         token,
         active_client: Mutex::new(None),
         commands: CommandRegistry::new(),

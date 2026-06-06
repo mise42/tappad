@@ -8,11 +8,14 @@ const releaseAllButton = document.getElementById("releaseAll");
 const query = new URLSearchParams(window.location.search);
 let ws;
 let activePointers = new Map();
-let lastTap = 0;
+let lastTapTime = 0;
 let pendingMove = { dx: 0, dy: 0 };
 let moveFlushTimer = null;
 let lastMoveTime = 0;
-const MOVE_INTERVAL = 16;
+const MOVE_INTERVAL = 8;
+const DOUBLE_TAP_WINDOW = 320;
+const DOUBLE_CLICK_GAP = 60;
+const LONG_PRESS_DELAY = 520;
 
 let pendingWheel = 0;
 let wheelFlushTimer = null;
@@ -55,7 +58,7 @@ function flushMove() {
   const dx = pendingMove.dx;
   const dy = pendingMove.dy;
   pendingMove = { dx: 0, dy: 0 };
-  if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+  if (Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) {
     send({ type: "move", dx, dy });
     lastMoveTime = now;
   }
@@ -97,52 +100,78 @@ function pointerSnapshot() {
 
 pad.addEventListener("pointerdown", (event) => {
   pad.setPointerCapture(event.pointerId);
-  activePointers.set(event.pointerId, {
+  const pointer = {
     x: event.clientX,
     y: event.clientY,
     lastX: event.clientX,
     lastY: event.clientY,
     startedAt: performance.now(),
-  });
+    longPressed: false,
+    longPressTimer: null,
+  };
+  pointer.longPressTimer = setTimeout(() => {
+    const current = activePointers.get(event.pointerId);
+    if (!current) return;
+    const travel = Math.hypot(current.lastX - current.x, current.lastY - current.y);
+    if (travel < 10 && pointerSnapshot().length === 1) {
+      current.longPressed = true;
+      send({ type: "click", button: "right" });
+    }
+  }, LONG_PRESS_DELAY);
+  activePointers.set(event.pointerId, pointer);
 });
 
-pad.addEventListener("pointermove", (event) => {
+function handlePointerMove(event) {
   const pointer = activePointers.get(event.pointerId);
   if (!pointer) return;
-  const dx = event.clientX - pointer.lastX;
-  const dy = event.clientY - pointer.lastY;
-  pointer.lastX = event.clientX;
-  pointer.lastY = event.clientY;
 
-  const pointers = pointerSnapshot();
-  if (pointers.length === 1) {
-    queueMove(dx * 1.25, dy * 1.25);
-  } else if (pointers.length === 2) {
-    queueWheel(-dy * 0.25);
+  const samples = event.getCoalescedEvents ? event.getCoalescedEvents() : [event];
+  for (const sample of samples.length ? samples : [event]) {
+    const dx = sample.clientX - pointer.lastX;
+    const dy = sample.clientY - pointer.lastY;
+    pointer.lastX = sample.clientX;
+    pointer.lastY = sample.clientY;
+
+    const pointers = pointerSnapshot();
+    if (pointers.length === 1) {
+      queueMove(dx * 1.25, dy * 1.25);
+    } else if (pointers.length === 2) {
+      queueWheel(-dy * 0.25);
+    }
   }
-});
+}
 
-function endPointer(event) {
+pad.addEventListener(
+  "onpointerrawupdate" in window ? "pointerrawupdate" : "pointermove",
+  handlePointerMove,
+);
+
+function endPointer(event, canceled = false) {
   const pointer = activePointers.get(event.pointerId);
   if (!pointer) return;
+  if (pointer.longPressTimer) clearTimeout(pointer.longPressTimer);
   activePointers.delete(event.pointerId);
+  if (canceled) return;
 
   const duration = performance.now() - pointer.startedAt;
   const travel = Math.hypot(pointer.lastX - pointer.x, pointer.lastY - pointer.y);
-  if (duration < 220 && travel < 10) {
+  if (!pointer.longPressed && duration < 220 && travel < 10) {
     const now = performance.now();
-    if (now - lastTap < 320) {
-      send({ type: "click", button: "right" });
-      lastTap = 0;
+    if (now - lastTapTime < DOUBLE_TAP_WINDOW) {
+      setTimeout(
+        () => send({ type: "click", button: "left", clickCount: 2 }),
+        DOUBLE_CLICK_GAP,
+      );
+      lastTapTime = 0;
     } else {
-      send({ type: "click", button: "left" });
-      lastTap = now;
+      send({ type: "click", button: "left", clickCount: 1 });
+      lastTapTime = now;
     }
   }
 }
 
 pad.addEventListener("pointerup", endPointer);
-pad.addEventListener("pointercancel", endPointer);
+pad.addEventListener("pointercancel", (event) => endPointer(event, true));
 
 const pressedKeys = new Set();
 
@@ -164,6 +193,10 @@ function releaseAllKeys() {
   }
   pressedKeys.clear();
   document.querySelectorAll("[data-key]").forEach((b) => b.classList.remove("pressed"));
+}
+
+function clearPendingTap() {
+  lastTapTime = 0;
 }
 
 document.querySelectorAll("[data-key]").forEach((button) => {
@@ -235,11 +268,15 @@ document.querySelectorAll("[data-cmd]").forEach((button) => {
 
 reconnectButton.addEventListener("click", connect);
 window.addEventListener("pagehide", () => {
+  clearPendingTap();
   releaseAllKeys();
   if (ws) ws.close();
 });
 window.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") releaseAllKeys();
+  if (document.visibilityState === "hidden") {
+    clearPendingTap();
+    releaseAllKeys();
+  }
 });
 connect();
 
