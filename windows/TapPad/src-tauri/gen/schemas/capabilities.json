@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default desktop capability for the TapPad Windows backend status window.","local":true,"windows":["main"],"permissions":["core:default"]}}

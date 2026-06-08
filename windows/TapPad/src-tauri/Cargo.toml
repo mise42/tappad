@@ -1,0 +1,21 @@
+[package]
+name = "tappad-windows-backend"
+version = "0.1.0"
+edition = "2024"
+build = "build.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.6.2", features = [] }
+
+[dependencies]
+axum = { version = "0.8", features = ["ws"] }
+include_dir = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.11.2", features = [] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+arboard = "3.6"
+enigo = "0.6"
