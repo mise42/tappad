@@ -21,12 +21,14 @@ use tokio::time::{sleep, timeout};
 mod commands;
 mod input;
 mod protocol;
+mod protocol_router;
 #[cfg(target_os = "linux")]
 mod uinput;
 
 use commands::CommandRegistry;
 use input::InputDevice;
 use protocol::{ClientMessage, ServerMessage};
+use protocol_router::{BackendEffect, ProtocolRouter};
 
 #[derive(Debug, serde::Deserialize)]
 struct WsQuery {
@@ -36,8 +38,8 @@ struct WsQuery {
 struct AppState {
     input: Mutex<InputDevice>,
     token: Option<String>,
-    active_client: Mutex<Option<(String, tokio::time::Instant)>>,
     commands: CommandRegistry,
+    router: Mutex<ProtocolRouter>,
 }
 
 static CLIENT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -113,103 +115,111 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: S
             }
         };
 
-        let should_handle = match &msg {
-            ClientMessage::Move { .. } | ClientMessage::Wheel { .. } => {
-                let mut active = state.active_client.lock().await;
-                let now = tokio::time::Instant::now();
-
-                if let Some((ref current, since)) = *active {
-                    if *current == client_id {
-                        // Update timestamp
-                        *active = Some((client_id.clone(), now));
-                        true
-                    } else if now.duration_since(since) > Duration::from_secs(2) {
-                        // Previous client timed out
-                        *active = Some((client_id.clone(), now));
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    *active = Some((client_id.clone(), now));
-                    true
-                }
-            }
-            _ => true,
-        };
-
-        if !should_handle {
-            continue;
+        let effect = state.router.lock().await.route(&client_id, msg);
+        if let Some(effect) = effect {
+            apply_backend_effect(Arc::clone(&state), &client_id, effect).await;
         }
+    }
 
-        let mut input = state.input.lock().await;
+    info!("client disconnected: {}", client_id);
+}
 
-        match msg {
-            ClientMessage::Move { dx, dy } => {
-                let _ = input.move_rel(dx.round() as i32, dy.round() as i32);
-            }
-            ClientMessage::Wheel { dy } => {
-                let _ = input.scroll(dy.round() as i32);
-            }
-            ClientMessage::Click {
-                button,
-                click_count,
-            } => {
-                let _ = input.click(&button, click_count);
-            }
-            ClientMessage::Key { code, down } => {
-                let _ = input.key(&code, down);
-            }
-            ClientMessage::Text { value } => {
-                info!(
-                    "type_text request from {}: '{}' ({} chars)",
-                    client_id,
-                    value,
-                    value.chars().count()
-                );
-                // Backends that cannot type a character directly may fall back
-                // to the clipboard path.
-                let has_non_ascii = value.chars().any(|c| !input.is_typeable(c));
-                if has_non_ascii {
-                    info!("text contains non-ASCII chars, falling back to paste");
-                    drop(input);
-                    let text = if value.len() > 12000 {
-                        value[..12000].to_string()
-                    } else {
-                        value
-                    };
-                    let state_clone = Arc::clone(&state);
-                    tokio::spawn(async move {
-                        if let Err(e) = do_paste(state_clone, &text).await {
-                            warn!("paste failed: {}", e);
-                        }
-                    });
-                } else {
-                    match input.type_text(&value) {
-                        Ok(_) => info!("type_text completed"),
-                        Err(e) => warn!("type_text failed: {}", e),
-                    }
-                }
-            }
-            ClientMessage::Paste { value } => {
-                drop(input);
+async fn apply_backend_effect(state: Arc<AppState>, client_id: &str, effect: BackendEffect) {
+    match effect {
+        BackendEffect::Move { dx, dy } => {
+            let mut input = state.input.lock().await;
+            let _ = input.move_rel(dx, dy);
+        }
+        BackendEffect::Wheel { dy } => {
+            let mut input = state.input.lock().await;
+            let _ = input.scroll(dy);
+        }
+        BackendEffect::Click {
+            button,
+            click_count,
+        } => {
+            let mut input = state.input.lock().await;
+            let _ = input.click(&button, click_count);
+        }
+        BackendEffect::Key { code, down } => {
+            let mut input = state.input.lock().await;
+            let _ = input.key(&code, down);
+        }
+        BackendEffect::Text { value } => {
+            let mut input = state.input.lock().await;
+            info!(
+                "type_text request from {}: '{}' ({} chars)",
+                client_id,
+                value,
+                value.chars().count()
+            );
+            // Backends that cannot type a character directly may fall back
+            // to the clipboard path.
+            let has_non_ascii = value.chars().any(|c| !input.is_typeable(c));
+            if has_non_ascii {
+                info!("text contains non-ASCII chars, falling back to paste");
                 let text = if value.len() > 12000 {
                     value[..12000].to_string()
                 } else {
                     value
                 };
-                info!("paste request from {}: {} chars", client_id, text.len());
+                drop(input);
                 let state_clone = Arc::clone(&state);
                 tokio::spawn(async move {
                     if let Err(e) = do_paste(state_clone, &text).await {
                         warn!("paste failed: {}", e);
                     }
                 });
+            } else {
+                match input.type_text(&value) {
+                    Ok(_) => info!("type_text completed"),
+                    Err(e) => warn!("type_text failed: {}", e),
+                }
             }
-            ClientMessage::Exec { command } => {
-                drop(input);
-                let client_id_clone = client_id.clone();
-                info!("exec request from {}: {}", client_id, command);
+        }
+        BackendEffect::Paste { value } => {
+            let text = if value.len() > 12000 {
+                value[..12000].to_string()
+            } else {
+                value
+            };
+            info!("paste request from {}: {} chars", client_id, text.len());
+            let state_clone = Arc::clone(&state);
+            tokio::spawn(async move {
+                if let Err(e) = do_paste(state_clone, &text).await {
+                    warn!("paste failed: {}", e);
+                }
+            });
+        }
+        BackendEffect::Exec { command } => {
+            let client_id = client_id.to_string();
+            info!("exec request from {}: {}", client_id, command);
+            tokio::spawn(async move {
+                let output = tokio::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(&command)
+                    .output()
+                    .await;
+                match output {
+                    Ok(o) if o.status.success() => {}
+                    Ok(o) => {
+                        warn!(
+                            "exec failed for {}: stderr: {}",
+                            client_id,
+                            String::from_utf8_lossy(&o.stderr)
+                        );
+                    }
+                    Err(e) => {
+                        warn!("exec error for {}: {}", client_id, e);
+                    }
+                }
+            });
+        }
+        BackendEffect::Cmd { action } => {
+            let client_id = client_id.to_string();
+            let command = state.commands.resolve(&action).map(|s| s.to_string());
+            if let Some(command) = command {
+                info!("cmd request from {}: {} -> {}", client_id, action, command);
                 tokio::spawn(async move {
                     let output = tokio::process::Command::new("sh")
                         .arg("-c")
@@ -220,52 +230,22 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: S
                         Ok(o) if o.status.success() => {}
                         Ok(o) => {
                             warn!(
-                                "exec failed for {}: stderr: {}",
-                                client_id_clone,
+                                "cmd failed for {} ({}): stderr: {}",
+                                client_id,
+                                action,
                                 String::from_utf8_lossy(&o.stderr)
                             );
                         }
                         Err(e) => {
-                            warn!("exec error for {}: {}", client_id_clone, e);
+                            warn!("cmd error for {} ({}): {}", client_id, action, e);
                         }
                     }
                 });
-            }
-            ClientMessage::Cmd { action } => {
-                drop(input);
-                let client_id_clone = client_id.clone();
-                let command = state.commands.resolve(&action).map(|s| s.to_string());
-                if let Some(command) = command {
-                    info!("cmd request from {}: {} -> {}", client_id, action, command);
-                    tokio::spawn(async move {
-                        let output = tokio::process::Command::new("sh")
-                            .arg("-c")
-                            .arg(&command)
-                            .output()
-                            .await;
-                        match output {
-                            Ok(o) if o.status.success() => {}
-                            Ok(o) => {
-                                warn!(
-                                    "cmd failed for {} ({}): stderr: {}",
-                                    client_id_clone,
-                                    action,
-                                    String::from_utf8_lossy(&o.stderr)
-                                );
-                            }
-                            Err(e) => {
-                                warn!("cmd error for {} ({}): {}", client_id_clone, action, e);
-                            }
-                        }
-                    });
-                } else {
-                    warn!("unknown cmd action from {}: {}", client_id, action);
-                }
+            } else {
+                warn!("unknown cmd action from {}: {}", client_id, action);
             }
         }
     }
-
-    info!("client disconnected: {}", client_id);
 }
 
 async fn do_paste(
@@ -390,8 +370,8 @@ async fn main() {
     let state = Arc::new(AppState {
         input: Mutex::new(input),
         token,
-        active_client: Mutex::new(None),
         commands: CommandRegistry::new(),
+        router: Mutex::new(ProtocolRouter::new()),
     });
 
     let app = Router::new()

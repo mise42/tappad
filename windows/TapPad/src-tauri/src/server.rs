@@ -16,17 +16,19 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
-    time::Duration,
 };
-use tokio::{sync::Mutex, time::sleep};
+use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 use crate::protocol::{ClientMessage, ServerMessage};
+#[path = "../../../../src/protocol_router.rs"]
+mod protocol_router;
+use protocol_router::{BackendEffect, ProtocolRouter};
 
-#[cfg(target_os = "windows")]
-use crate::windows_input::InputDevice;
 #[cfg(not(target_os = "windows"))]
 use crate::unsupported_input::InputDevice;
+#[cfg(target_os = "windows")]
+use crate::windows_input::InputDevice;
 
 static STATIC_ASSETS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../../static");
 static CLIENT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -39,7 +41,7 @@ struct WsQuery {
 struct AppState {
     input: Mutex<InputDevice>,
     token: Option<String>,
-    active_client: Mutex<Option<(String, tokio::time::Instant)>>,
+    router: Mutex<ProtocolRouter>,
 }
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -54,7 +56,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let state = Arc::new(AppState {
         input: Mutex::new(input),
         token,
-        active_client: Mutex::new(None),
+        router: Mutex::new(ProtocolRouter::new()),
     });
 
     let app = Router::new()
@@ -110,95 +112,70 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: S
             }
         };
 
-        if !should_handle_motion(&state, &client_id, &message).await {
-            continue;
-        }
-
-        match message {
-            ClientMessage::Move { dx, dy } => {
-                let mut input = state.input.lock().await;
-                if let Err(error) = input.move_rel(dx.round() as i32, dy.round() as i32) {
-                    warn!("move failed: {error}");
-                }
-            }
-            ClientMessage::Wheel { dy } => {
-                let mut input = state.input.lock().await;
-                if let Err(error) = input.scroll(dy.round() as i32) {
-                    warn!("scroll failed: {error}");
-                }
-            }
-            ClientMessage::Click {
-                button,
-                click_count,
-            } => {
-                let mut input = state.input.lock().await;
-                if let Err(error) = input.click(&button, click_count) {
-                    warn!("click failed: {error}");
-                }
-            }
-            ClientMessage::Key { code, down } => {
-                let mut input = state.input.lock().await;
-                if let Err(error) = input.key(&code, down) {
-                    warn!("key failed: {error}");
-                }
-            }
-            ClientMessage::Text { value } => {
-                let mut input = state.input.lock().await;
-                if let Err(error) = input.type_text(&value) {
-                    warn!("text failed: {error}");
-                }
-            }
-            ClientMessage::Paste { value } => {
-                let state = Arc::clone(&state);
-                tokio::spawn(async move {
-                    if let Err(error) = do_paste(state, value).await {
-                        warn!("paste failed: {error}");
-                    }
-                });
-            }
-            ClientMessage::Exec { command } => {
-                tokio::spawn(async move {
-                    if let Err(error) = run_shell_command(&command).await {
-                        warn!("exec failed: {error}");
-                    }
-                });
-            }
-            ClientMessage::Cmd { action } => {
-                tokio::spawn(async move {
-                    if let Err(error) = run_named_action(&action).await {
-                        warn!("cmd failed for {action}: {error}");
-                    }
-                });
-            }
+        let effect = state.router.lock().await.route(&client_id, message);
+        if let Some(effect) = effect {
+            apply_backend_effect(Arc::clone(&state), effect).await;
         }
     }
 
     info!("client disconnected: {client_id}");
 }
 
-async fn should_handle_motion(
-    state: &Arc<AppState>,
-    client_id: &str,
-    message: &ClientMessage,
-) -> bool {
-    if !matches!(
-        message,
-        ClientMessage::Move { .. } | ClientMessage::Wheel { .. }
-    ) {
-        return true;
-    }
-
-    let mut active = state.active_client.lock().await;
-    let now = tokio::time::Instant::now();
-    match &*active {
-        Some((current, since)) if current == client_id => {
-            *active = Some((client_id.to_string(), now));
-            true
+async fn apply_backend_effect(state: Arc<AppState>, effect: BackendEffect) {
+    match effect {
+        BackendEffect::Move { dx, dy } => {
+            let mut input = state.input.lock().await;
+            if let Err(error) = input.move_rel(dx, dy) {
+                warn!("move failed: {error}");
+            }
         }
-        Some((_current, since)) if now.duration_since(*since) <= Duration::from_secs(2) => false,
-        _ => {
-            *active = Some((client_id.to_string(), now));
-            true
+        BackendEffect::Wheel { dy } => {
+            let mut input = state.input.lock().await;
+            if let Err(error) = input.scroll(dy) {
+                warn!("scroll failed: {error}");
+            }
+        }
+        BackendEffect::Click {
+            button,
+            click_count,
+        } => {
+            let mut input = state.input.lock().await;
+            if let Err(error) = input.click(&button, click_count) {
+                warn!("click failed: {error}");
+            }
+        }
+        BackendEffect::Key { code, down } => {
+            let mut input = state.input.lock().await;
+            if let Err(error) = input.key(&code, down) {
+                warn!("key failed: {error}");
+            }
+        }
+        BackendEffect::Text { value } => {
+            let mut input = state.input.lock().await;
+            if let Err(error) = input.type_text(&value) {
+                warn!("text failed: {error}");
+            }
+        }
+        BackendEffect::Paste { value } => {
+            tokio::spawn(async move {
+                if let Err(error) = do_paste(state, value).await {
+                    warn!("paste failed: {error}");
+                }
+            });
+        }
+        BackendEffect::Exec { command } => {
+            tokio::spawn(async move {
+                if let Err(error) = run_shell_command(&command).await {
+                    warn!("exec failed: {error}");
+                }
+            });
+        }
+        BackendEffect::Cmd { action } => {
+            tokio::spawn(async move {
+                if let Err(error) = run_named_action(&action).await {
+                    warn!("cmd failed for {action}: {error}");
+                }
+            });
         }
     }
 }
@@ -214,14 +191,14 @@ async fn do_paste(
         let mut clipboard = Clipboard::new()?;
         clipboard.set_text(text)?;
 
-        sleep(Duration::from_millis(80)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
 
         let mut input = state.input.lock().await;
         input.key("ControlLeft", true)?;
         input.key("KeyV", true)?;
-        sleep(Duration::from_millis(35)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(35)).await;
         input.key("KeyV", false)?;
-        sleep(Duration::from_millis(35)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(35)).await;
         input.key("ControlLeft", false)?;
         Ok(())
     }
@@ -234,18 +211,14 @@ async fn do_paste(
     }
 }
 
-async fn run_named_action(
-    action: &str,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn run_named_action(action: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match action {
         "lock_screen" => run_shell_command("rundll32.exe user32.dll,LockWorkStation").await,
         _ => Err(format!("unknown or unsupported Windows action: {action}").into()),
     }
 }
 
-async fn run_shell_command(
-    command: &str,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn run_shell_command(command: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let output = if cfg!(target_os = "windows") {
         tokio::process::Command::new("cmd")
             .arg("/C")
@@ -277,7 +250,11 @@ async fn static_fallback(uri: Uri) -> Response {
         return (StatusCode::NOT_FOUND, "Not found\n").into_response();
     };
 
-    let mime = match file.path().extension().and_then(|extension| extension.to_str()) {
+    let mime = match file
+        .path()
+        .extension()
+        .and_then(|extension| extension.to_str())
+    {
         Some("html") => "text/html; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",
         Some("js") => "application/javascript; charset=utf-8",
