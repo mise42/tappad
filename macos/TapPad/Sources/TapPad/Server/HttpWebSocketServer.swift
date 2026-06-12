@@ -7,9 +7,7 @@ final class HttpWebSocketServer: @unchecked Sendable {
     private let port: UInt16
     private let staticRoot: URL
     private let token: String?
-    private let input: InputDevice
-    private let clipboard: ClipboardGateway
-    private let commands: CommandRegistry
+    private let router: ProtocolRouter
     private let queue = DispatchQueue(label: "tap-pad.server", qos: .userInitiated)
     private var serverFd: Int32 = -1
 
@@ -26,9 +24,11 @@ final class HttpWebSocketServer: @unchecked Sendable {
         self.port = port
         self.staticRoot = staticRoot
         self.token = token
-        self.input = input
-        self.clipboard = clipboard
-        self.commands = commands
+        self.router = ProtocolRouter(
+            input: input,
+            clipboard: clipboard,
+            commands: commands
+        )
     }
 
     func start() throws {
@@ -94,6 +94,8 @@ final class HttpWebSocketServer: @unchecked Sendable {
     }
 
     private func handleWebSocket(_ fd: Int32, request: HttpRequest) {
+        let clientID = UUID().uuidString
+
         if let token, request.query["token"] != token {
             writeString(fd, "HTTP/1.1 403 Forbidden\r\nContent-Length: 10\r\n\r\nForbidden\n")
             return
@@ -128,7 +130,7 @@ final class HttpWebSocketServer: @unchecked Sendable {
                 guard let text = String(data: frame.payload, encoding: .utf8) else {
                     continue
                 }
-                handleClientText(text)
+                handleClientText(text, clientID: clientID)
             case 0x8:
                 writeWebSocketFrame(fd, opcode: 0x8, payload: frame.payload)
                 return
@@ -140,26 +142,9 @@ final class HttpWebSocketServer: @unchecked Sendable {
         }
     }
 
-    private func handleClientText(_ text: String) {
+    private func handleClientText(_ text: String, clientID: String) {
         do {
-            switch try ClientMessageDecoder.decode(text) {
-            case let .move(dx, dy):
-                input.move(dx: dx, dy: dy)
-            case let .wheel(dy):
-                input.scroll(dy: dy.rounded())
-            case let .click(button, clickCount):
-                input.click(button: button, clickCount: clickCount)
-            case let .key(code, down):
-                input.key(code: code, down: down)
-            case let .text(value):
-                input.typeText(value)
-            case let .paste(value):
-                clipboard.paste(value)
-            case let .cmd(action):
-                commands.run(action: action)
-            case let .exec(command):
-                print("raw exec is intentionally unsupported on macOS backend: \(command)")
-            }
+            router.route(try ClientMessageDecoder.decode(text), from: clientID)
         } catch {
             print("invalid client message: \(error)")
         }
