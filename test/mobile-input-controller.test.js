@@ -4,8 +4,8 @@ const test = require("node:test");
 const MobileInputController = require("../static/mobile-input-controller.js");
 
 class FakeScheduler {
-  constructor() {
-    this.time = 1000;
+  constructor(initialTime = 1000) {
+    this.time = initialTime;
     this.nextId = 1;
     this.timers = new Map();
   }
@@ -41,8 +41,8 @@ class FakeScheduler {
   }
 }
 
-function createController() {
-  const scheduler = new FakeScheduler();
+function createController({ initialTime } = {}) {
+  const scheduler = new FakeScheduler(initialTime);
   const messages = [];
   const controller = new MobileInputController({
     send: (message) => messages.push(message),
@@ -64,6 +64,17 @@ test("short tap sends a left click", () => {
   controller.pointerDown(pointerEvent(1, 20, 30));
   scheduler.tick(80);
   controller.pointerUp(pointerEvent(1, 20, 30));
+
+  assert.deepEqual(messages, [{ type: "click", button: "left", clickCount: 1 }]);
+});
+
+test("first tap near page load is not mistaken for a double tap", () => {
+  const { controller, scheduler, messages } = createController({ initialTime: 0 });
+
+  controller.pointerDown(pointerEvent(1, 20, 30));
+  scheduler.tick(80);
+  controller.pointerUp(pointerEvent(1, 20, 30));
+  scheduler.tick(60);
 
   assert.deepEqual(messages, [{ type: "click", button: "left", clickCount: 1 }]);
 });
@@ -97,6 +108,31 @@ test("long press sends right click and suppresses tap on release", () => {
   controller.pointerUp(pointerEvent(1, 12, 18));
 
   assert.deepEqual(messages, [{ type: "click", button: "right" }]);
+});
+
+test("second finger disqualifies the gesture from tap and long press", () => {
+  const { controller, scheduler, messages } = createController();
+
+  controller.pointerDown(pointerEvent(1, 10, 10));
+  scheduler.tick(120);
+  controller.pointerDown(pointerEvent(2, 30, 30));
+  scheduler.tick(40);
+  controller.pointerUp(pointerEvent(2, 30, 30));
+  scheduler.tick(520);
+  controller.pointerUp(pointerEvent(1, 10, 10));
+
+  assert.deepEqual(messages, []);
+});
+
+test("movement beyond tap threshold cancels pending long press", () => {
+  const { controller, scheduler, messages } = createController();
+
+  controller.pointerDown(pointerEvent(1, 10, 10));
+  scheduler.tick(100);
+  controller.pointerMove(pointerEvent(1, 25, 10));
+  scheduler.tick(420);
+
+  assert.deepEqual(messages, [{ type: "move", dx: 18.75, dy: 0 }]);
 });
 
 test("one-finger movement is coalesced into a move intent", () => {
@@ -135,4 +171,19 @@ test("release all sends key-up for every pressed key once", () => {
     { type: "key", code: "KeyC", down: false },
   ]);
   assert.deepEqual(controller.releaseAllKeys(), []);
+});
+
+test("text and command intents ignore invalid input", () => {
+  const { controller, messages } = createController();
+
+  assert.equal(controller.sendText(undefined), false);
+  assert.equal(controller.sendText("   "), false);
+  assert.equal(controller.sendText("hello"), true);
+  controller.sendCommand("");
+  controller.sendCommand("screenshot");
+
+  assert.deepEqual(messages, [
+    { type: "text", value: "hello" },
+    { type: "cmd", action: "screenshot" },
+  ]);
 });

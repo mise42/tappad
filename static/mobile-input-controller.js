@@ -39,12 +39,21 @@
     }
 
     pointerDown(event) {
+      const tapEligible = this.activePointers.size === 0;
+      if (!tapEligible) {
+        for (const activePointer of this.activePointers.values()) {
+          activePointer.tapEligible = false;
+          this.cancelLongPress(activePointer);
+        }
+      }
+
       const pointer = {
         x: event.clientX,
         y: event.clientY,
         lastX: event.clientX,
         lastY: event.clientY,
         startedAt: this.now(),
+        tapEligible,
         longPressed: false,
         longPressTimer: null,
       };
@@ -53,7 +62,7 @@
         const current = this.activePointers.get(event.pointerId);
         if (!current) return;
         const travel = Math.hypot(current.lastX - current.x, current.lastY - current.y);
-        if (travel < 10 && this.pointerSnapshot().length === 1) {
+        if (current.tapEligible && travel < 10 && this.activePointers.size === 1) {
           current.longPressed = true;
           this.send({ type: "click", button: "right" });
         }
@@ -67,16 +76,21 @@
       if (!pointer) return;
 
       const samples = event.getCoalescedEvents ? event.getCoalescedEvents() : [event];
+      const pointerCount = this.activePointers.size;
       for (const sample of samples.length ? samples : [event]) {
         const dx = sample.clientX - pointer.lastX;
         const dy = sample.clientY - pointer.lastY;
         pointer.lastX = sample.clientX;
         pointer.lastY = sample.clientY;
 
-        const pointers = this.pointerSnapshot();
-        if (pointers.length === 1) {
+        const travel = Math.hypot(pointer.lastX - pointer.x, pointer.lastY - pointer.y);
+        if (travel >= 10) {
+          this.cancelLongPress(pointer);
+        }
+
+        if (pointerCount === 1) {
           this.queueMove(dx * 1.25, dy * 1.25);
-        } else if (pointers.length === 2) {
+        } else if (pointerCount === 2) {
           this.queueWheel(-dy * 0.25);
         }
       }
@@ -114,12 +128,13 @@
     }
 
     sendText(value) {
-      if (!value.trim()) return false;
+      if (typeof value !== "string" || !value.trim()) return false;
       this.send({ type: "text", value });
       return true;
     }
 
     sendCommand(action) {
+      if (!action) return;
       this.send({ type: "cmd", action });
     }
 
@@ -127,22 +142,18 @@
       this.lastTapTime = 0;
     }
 
-    pointerSnapshot() {
-      return Array.from(this.activePointers.values());
-    }
-
     endPointer(event, canceled) {
       const pointer = this.activePointers.get(event.pointerId);
       if (!pointer) return;
-      if (pointer.longPressTimer) this.clearTimeout(pointer.longPressTimer);
+      this.cancelLongPress(pointer);
       this.activePointers.delete(event.pointerId);
       if (canceled) return;
 
       const duration = this.now() - pointer.startedAt;
       const travel = Math.hypot(pointer.lastX - pointer.x, pointer.lastY - pointer.y);
-      if (!pointer.longPressed && duration < 220 && travel < 10) {
+      if (pointer.tapEligible && !pointer.longPressed && duration < 220 && travel < 10) {
         const now = this.now();
-        if (now - this.lastTapTime < this.doubleTapWindow) {
+        if (this.lastTapTime > 0 && now - this.lastTapTime < this.doubleTapWindow) {
           this.setTimeout(
             () => this.send({ type: "click", button: "left", clickCount: 2 }),
             this.doubleClickGap,
@@ -153,6 +164,12 @@
           this.lastTapTime = now;
         }
       }
+    }
+
+    cancelLongPress(pointer) {
+      if (!pointer.longPressTimer) return;
+      this.clearTimeout(pointer.longPressTimer);
+      pointer.longPressTimer = null;
     }
 
     queueMove(dx, dy) {
