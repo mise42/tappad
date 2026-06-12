@@ -7,20 +7,6 @@ const releaseAllButton = document.getElementById("releaseAll");
 
 const query = new URLSearchParams(window.location.search);
 let ws;
-let activePointers = new Map();
-let lastTapTime = 0;
-let pendingMove = { dx: 0, dy: 0 };
-let moveFlushTimer = null;
-let lastMoveTime = 0;
-const MOVE_INTERVAL = 8;
-const DOUBLE_TAP_WINDOW = 320;
-const DOUBLE_CLICK_GAP = 60;
-const LONG_PRESS_DELAY = 520;
-
-let pendingWheel = 0;
-let wheelFlushTimer = null;
-let lastWheelTime = 0;
-const WHEEL_INTERVAL = 24;
 
 function socketUrl() {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -48,155 +34,33 @@ function send(message) {
   ws.send(JSON.stringify(message));
 }
 
-function flushMove() {
-  moveFlushTimer = null;
-  const now = performance.now();
-  if (now - lastMoveTime < MOVE_INTERVAL) {
-    moveFlushTimer = setTimeout(flushMove, MOVE_INTERVAL - (now - lastMoveTime));
-    return;
-  }
-  const dx = pendingMove.dx;
-  const dy = pendingMove.dy;
-  pendingMove = { dx: 0, dy: 0 };
-  if (Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) {
-    send({ type: "move", dx, dy });
-    lastMoveTime = now;
-  }
-}
-
-function queueMove(dx, dy) {
-  pendingMove.dx += dx;
-  pendingMove.dy += dy;
-  if (!moveFlushTimer) {
-    moveFlushTimer = setTimeout(flushMove, MOVE_INTERVAL);
-  }
-}
-
-function flushWheel() {
-  wheelFlushTimer = null;
-  const now = performance.now();
-  if (now - lastWheelTime < WHEEL_INTERVAL) {
-    wheelFlushTimer = setTimeout(flushWheel, WHEEL_INTERVAL - (now - lastWheelTime));
-    return;
-  }
-  const dy = pendingWheel;
-  pendingWheel = 0;
-  if (Math.abs(dy) > 0.5) {
-    send({ type: "wheel", dy });
-    lastWheelTime = now;
-  }
-}
-
-function queueWheel(dy) {
-  pendingWheel += dy;
-  if (!wheelFlushTimer) {
-    wheelFlushTimer = setTimeout(flushWheel, WHEEL_INTERVAL);
-  }
-}
-
-function pointerSnapshot() {
-  return Array.from(activePointers.values());
-}
+const controller = new MobileInputController({
+  send,
+  now: () => performance.now(),
+  setTimeout: (callback, delay) => setTimeout(callback, delay),
+  clearTimeout: (timer) => clearTimeout(timer),
+});
 
 pad.addEventListener("pointerdown", (event) => {
   pad.setPointerCapture(event.pointerId);
-  const pointer = {
-    x: event.clientX,
-    y: event.clientY,
-    lastX: event.clientX,
-    lastY: event.clientY,
-    startedAt: performance.now(),
-    longPressed: false,
-    longPressTimer: null,
-  };
-  pointer.longPressTimer = setTimeout(() => {
-    const current = activePointers.get(event.pointerId);
-    if (!current) return;
-    const travel = Math.hypot(current.lastX - current.x, current.lastY - current.y);
-    if (travel < 10 && pointerSnapshot().length === 1) {
-      current.longPressed = true;
-      send({ type: "click", button: "right" });
-    }
-  }, LONG_PRESS_DELAY);
-  activePointers.set(event.pointerId, pointer);
+  controller.pointerDown(event);
 });
-
-function handlePointerMove(event) {
-  const pointer = activePointers.get(event.pointerId);
-  if (!pointer) return;
-
-  const samples = event.getCoalescedEvents ? event.getCoalescedEvents() : [event];
-  for (const sample of samples.length ? samples : [event]) {
-    const dx = sample.clientX - pointer.lastX;
-    const dy = sample.clientY - pointer.lastY;
-    pointer.lastX = sample.clientX;
-    pointer.lastY = sample.clientY;
-
-    const pointers = pointerSnapshot();
-    if (pointers.length === 1) {
-      queueMove(dx * 1.25, dy * 1.25);
-    } else if (pointers.length === 2) {
-      queueWheel(-dy * 0.25);
-    }
-  }
-}
 
 pad.addEventListener(
   "onpointerrawupdate" in window ? "pointerrawupdate" : "pointermove",
-  handlePointerMove,
+  (event) => controller.pointerMove(event),
 );
 
-function endPointer(event, canceled = false) {
-  const pointer = activePointers.get(event.pointerId);
-  if (!pointer) return;
-  if (pointer.longPressTimer) clearTimeout(pointer.longPressTimer);
-  activePointers.delete(event.pointerId);
-  if (canceled) return;
-
-  const duration = performance.now() - pointer.startedAt;
-  const travel = Math.hypot(pointer.lastX - pointer.x, pointer.lastY - pointer.y);
-  if (!pointer.longPressed && duration < 220 && travel < 10) {
-    const now = performance.now();
-    if (now - lastTapTime < DOUBLE_TAP_WINDOW) {
-      setTimeout(
-        () => send({ type: "click", button: "left", clickCount: 2 }),
-        DOUBLE_CLICK_GAP,
-      );
-      lastTapTime = 0;
-    } else {
-      send({ type: "click", button: "left", clickCount: 1 });
-      lastTapTime = now;
-    }
-  }
-}
-
-pad.addEventListener("pointerup", endPointer);
-pad.addEventListener("pointercancel", (event) => endPointer(event, true));
-
-const pressedKeys = new Set();
-
-function pressKey(code) {
-  if (pressedKeys.has(code)) return;
-  pressedKeys.add(code);
-  send({ type: "key", code, down: true });
-}
-
-function releaseKey(code) {
-  if (!pressedKeys.has(code)) return;
-  pressedKeys.delete(code);
-  send({ type: "key", code, down: false });
-}
+pad.addEventListener("pointerup", (event) => controller.pointerUp(event));
+pad.addEventListener("pointercancel", (event) => controller.pointerCancel(event));
 
 function releaseAllKeys() {
-  for (const code of pressedKeys) {
-    send({ type: "key", code, down: false });
-  }
-  pressedKeys.clear();
+  controller.releaseAllKeys();
   document.querySelectorAll("[data-key]").forEach((b) => b.classList.remove("pressed"));
 }
 
 function clearPendingTap() {
-  lastTapTime = 0;
+  controller.clearPendingTap();
 }
 
 document.querySelectorAll("[data-key]").forEach((button) => {
@@ -204,20 +68,23 @@ document.querySelectorAll("[data-key]").forEach((button) => {
 
   const onDown = (e) => {
     e.preventDefault();
-    pressKey(code);
-    button.classList.add("pressed");
+    if (controller.pressKey(code)) {
+      button.classList.add("pressed");
+    }
   };
 
   const onUp = (e) => {
     e.preventDefault();
-    releaseKey(code);
-    button.classList.remove("pressed");
+    if (controller.releaseKey(code)) {
+      button.classList.remove("pressed");
+    }
   };
 
   const onCancel = (e) => {
     e.preventDefault();
-    releaseKey(code);
-    button.classList.remove("pressed");
+    if (controller.releaseKey(code)) {
+      button.classList.remove("pressed");
+    }
   };
 
   button.addEventListener("pointerdown", onDown);
@@ -228,9 +95,9 @@ document.querySelectorAll("[data-key]").forEach((button) => {
 
 sendTextButton.addEventListener("click", () => {
   const value = textInput.value;
-  if (!value.trim()) return;
-  send({ type: "text", value });
-  textInput.value = "";
+  if (controller.sendText(value)) {
+    textInput.value = "";
+  }
 });
 
 textInput.addEventListener("keydown", (event) => {
@@ -262,7 +129,7 @@ releaseAllButton.addEventListener("click", releaseAllKeys);
 // Command buttons
 document.querySelectorAll("[data-cmd]").forEach((button) => {
   button.addEventListener("click", () => {
-    send({ type: "cmd", action: button.dataset.cmd });
+    controller.sendCommand(button.dataset.cmd);
   });
 });
 
