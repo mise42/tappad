@@ -43,6 +43,26 @@ final class MacCommandRegistry: CommandRegistry, @unchecked Sendable {
                 "pmset",
                 "displaysleepnow",
             ],
+            "open_recordings_folder": [
+                "sh",
+                "-c",
+                "mkdir -p \"$HOME/Movies/TapPad\" && open \"$HOME/Movies/TapPad\"",
+            ],
+            "screenshot": [
+                "sh",
+                "-c",
+                "mkdir -p \"$HOME/Movies/TapPad\" && screencapture -x \"$HOME/Movies/TapPad/screenshot-$(date +'%Y%m%d-%H%M%S')-$(date +'%s%3N').png\"",
+            ],
+            "close_window": [
+                "osascript",
+                "-e",
+                "tell application \"System Events\" to keystroke \"w\" using {command down}",
+            ],
+            "app_launcher": [
+                "sh",
+                "-c",
+                "open -a Launchpad",
+            ],
         ]
     }
 
