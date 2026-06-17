@@ -1,5 +1,8 @@
 {
   "name": "tappad",
   "version": "0.1.0",
-  "private": true
+  "private": true,
+  "scripts": {
+    "check:landing": "node scripts/check-landing-download-links.mjs"
+  }
 }

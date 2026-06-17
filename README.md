@@ -6,7 +6,7 @@ that can turn a phone or tablet into a pointer, keyboard, and paste bridge.
 The current macOS backend is a native AppKit app. The Linux/Omarchy backend is a
 Rust server that sends input through `uinput`.
 
-## macOS
+## Mac beta setup
 
 ```bash
 cd ~/Work/personal/tappad/macos/TapPad
