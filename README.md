@@ -46,6 +46,17 @@ Then open:
 http://100.113.201.90:8765/?token=change-me
 ```
 
+The Linux backend exposes its Desktop Host Surface state at:
+
+```text
+http://100.113.201.90:8765/api/host-state
+```
+
+The response includes pairing links, server status, readiness groups, local
+settings summary, and the Linux/Omarchy action capability manifest. Screen
+recordings are written to `~/Videos/TapPad`, and `open_recordings_folder` opens
+that folder.
+
 ## Controls
 
 - One finger move: pointer movement

@@ -1,5 +1,5 @@
 use axum::{
-    Router,
+    Json, Router,
     extract::{
         Query, State,
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
@@ -24,6 +24,7 @@ use tokio::time::timeout;
 mod commands;
 #[cfg(target_os = "windows")]
 mod enigo_input;
+mod host_surface;
 mod input;
 mod protocol;
 mod protocol_router;
@@ -31,6 +32,7 @@ mod protocol_router;
 mod uinput;
 
 use commands::CommandRegistry;
+use host_surface::{HostSurfaceState, RuntimeSettings, host_surface_state, render_mobile_index};
 use input::InputDevice;
 use protocol::{ClientMessage, ServerMessage};
 use protocol_router::{BackendEffect, ProtocolRouter};
@@ -45,6 +47,7 @@ struct AppState {
     token: Option<String>,
     commands: CommandRegistry,
     router: Mutex<ProtocolRouter>,
+    runtime: RuntimeSettings,
 }
 
 static CLIENT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -106,6 +109,10 @@ async fn ws_handler(
     }
     let client_id = next_client_id();
     ws.on_upgrade(move |socket| handle_socket(socket, state, client_id))
+}
+
+async fn api_host_state(State(state): State<Arc<AppState>>) -> Json<HostSurfaceState> {
+    Json(host_surface_state(&state.runtime, &state.commands))
 }
 
 async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: String) {
@@ -348,10 +355,7 @@ async fn do_paste(
     }
 }
 
-async fn send_windows_paste_shortcut<T, E, F>(
-    input: &Mutex<T>,
-    mut send_key: F,
-) -> Result<(), E>
+async fn send_windows_paste_shortcut<T, E, F>(input: &Mutex<T>, mut send_key: F) -> Result<(), E>
 where
     F: FnMut(&mut T, &str, bool) -> Result<(), E>,
 {
@@ -374,7 +378,7 @@ where
     Ok(())
 }
 
-async fn static_fallback(uri: Uri) -> impl IntoResponse {
+async fn static_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
     let file_path = std::path::PathBuf::from("static").join(if path.is_empty() || path == "/" {
         "index.html"
@@ -392,6 +396,16 @@ async fn static_fallback(uri: Uri) -> impl IntoResponse {
                 Some("svg") => "image/svg+xml",
                 _ => "application/octet-stream",
             };
+            let body = if file_path.extension().and_then(|e| e.to_str()) == Some("html") {
+                render_mobile_index(
+                    std::str::from_utf8(&body).unwrap_or_default(),
+                    &host_surface::action_capabilities(&state.commands),
+                )
+                .into_bytes()
+            } else {
+                body
+            };
+
             (
                 [
                     (header::CONTENT_TYPE, mime),
@@ -419,7 +433,8 @@ async fn main() {
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(8765u16);
-    let token = std::env::var("TOUCHPAD_TOKEN").ok();
+    let runtime = RuntimeSettings::from_env();
+    let token = runtime.token.clone();
 
     let input = InputDevice::new().expect("Failed to initialize input device");
 
@@ -428,10 +443,12 @@ async fn main() {
         token,
         commands: CommandRegistry::new(),
         router: Mutex::new(ProtocolRouter::new()),
+        runtime,
     });
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
+        .route("/api/host-state", get(api_host_state))
         .fallback(static_fallback)
         .with_state(state.clone());
 
@@ -476,7 +493,9 @@ mod tests {
             .expect("input lock should be available while paste waits between keys");
         drop(guard);
 
-        task.await.expect("paste task should finish").expect("paste helper should succeed");
+        task.await
+            .expect("paste task should finish")
+            .expect("paste helper should succeed");
 
         let events = events.lock().await.clone();
         assert_eq!(
