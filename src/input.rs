@@ -1,14 +1,17 @@
 #[cfg(target_os = "linux")]
 pub use crate::uinput::UinputDevice as InputDevice;
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "windows")]
+pub use crate::enigo_input::EnigoInputDevice as InputDevice;
+
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 pub struct InputDevice;
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 impl InputDevice {
     pub fn new() -> std::io::Result<Self> {
         Err(std::io::Error::other(
-            "Rust backend only supports Linux; use macos/TapPad for macOS",
+            "Rust backend only supports Linux and Windows; use macos/TapPad for macOS",
         ))
     }
 

@@ -1,22 +1,33 @@
-# Issue tracker: GitHub
+# Issue tracker: Linear
 
-Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+Issues and PRDs for this repo live in Linear.
+
+## Default location
+
+- Workspace: `misehub`
+- Team: `Product` (`PDT`)
+- Project: `TapPad`
+- Project URL: `https://linear.app/misehub/project/tappad-80c06c1408bd`
+
+Use Linear MCP tools when available. If the MCP tool is unavailable, use the Linear web app and keep the same team/project placement.
 
 ## Conventions
 
-- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
-- **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
-- **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
-- **Comment on an issue**: `gh issue comment <number> --body "..."`
-- **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
-- **Close**: `gh issue close <number> --comment "..."`
+- **Create an issue**: create it in the `Product` team and attach it to the `TapPad` project unless the user says otherwise.
+- **Read an issue**: fetch the Linear issue by identifier and include comments/status/labels when triaging or planning.
+- **List issues**: filter to the `Product` team and `TapPad` project first, then narrow by status, label, assignee, or milestone.
+- **Comment on an issue**: add a Linear comment with the decision, evidence, next step, or implementation note.
+- **Apply / remove labels**: use the label mapping in `docs/agents/triage-labels.md`.
+- **Close / cancel / defer**: update the Linear status and leave a short comment explaining the product decision.
 
-Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
+## Commercial product posture
+
+Treat Linear as the source of truth for product work, not just code tasks. Issues may represent product discovery, website work, activation backend work, packaging, pricing, customer onboarding, and implementation.
 
 ## When a skill says "publish to the issue tracker"
 
-Create a GitHub issue.
+Create a Linear issue in the `Product` team and `TapPad` project.
 
 ## When a skill says "fetch the relevant ticket"
 
-Run `gh issue view <number> --comments`.
+Fetch the matching Linear issue by identifier.

@@ -287,7 +287,7 @@ impl UinputDevice {
             check_ioctl(libc::ioctl(raw, UI_SET_RELBIT, REL_WHEEL as i32), "UI_SET_RELBIT REL_WHEEL")?;
 
             let mut name = [0u8; UINPUT_MAX_NAME_SIZE];
-            let bytes = b"omarchy-touchpad";
+            let bytes = b"tappad";
             name[..bytes.len()].copy_from_slice(bytes);
 
             let setup = UinputSetup {

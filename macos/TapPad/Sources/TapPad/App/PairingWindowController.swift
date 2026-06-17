@@ -41,6 +41,7 @@ final class PairingWindowController: NSWindowController {
         super.showWindow(sender)
         window?.makeKeyAndOrderFront(sender)
         NSApp.activate(ignoringOtherApps: true)
+        Permissions.requestAccessibilityTrustOnce()
     }
 
     private func makeContentView() -> NSView {

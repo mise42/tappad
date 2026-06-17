@@ -1,6 +1,6 @@
 {
-  "name": "Omarchy Touchpad",
-  "short_name": "Touchpad",
+  "name": "TapPad",
+  "short_name": "TapPad",
   "display": "standalone",
   "background_color": "#0a0a0f",
   "theme_color": "#0a0a0f",

@@ -2,8 +2,23 @@ import ApplicationServices
 import Foundation
 
 enum Permissions {
+    private static let hasPromptedAccessibilityKey = "TapPadHasPromptedAccessibilityPermission"
+
     static var isAccessibilityTrusted: Bool {
         AXIsProcessTrusted()
+    }
+
+    static func requestAccessibilityTrustOnce() {
+        guard !isAccessibilityTrusted else {
+            return
+        }
+
+        guard !UserDefaults.standard.bool(forKey: hasPromptedAccessibilityKey) else {
+            return
+        }
+
+        UserDefaults.standard.set(true, forKey: hasPromptedAccessibilityKey)
+        requestAccessibilityTrust()
     }
 
     static func requestAccessibilityTrust() {

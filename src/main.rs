@@ -15,10 +15,14 @@ use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+use tokio::time::sleep;
 #[cfg(target_os = "linux")]
-use tokio::time::{sleep, timeout};
+use tokio::time::timeout;
 
 mod commands;
+#[cfg(target_os = "windows")]
+mod enigo_input;
 mod input;
 mod protocol;
 mod protocol_router;
@@ -70,6 +74,22 @@ fn get_hostname() -> String {
         .map(|hostname| hostname.trim().to_string())
         .filter(|hostname| !hostname.is_empty())
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn shell_command(command: &str) -> tokio::process::Command {
+    #[cfg(target_os = "windows")]
+    {
+        let mut cmd = tokio::process::Command::new("cmd");
+        cmd.arg("/C").arg(command);
+        cmd
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let mut cmd = tokio::process::Command::new("sh");
+        cmd.arg("-c").arg(command);
+        cmd
+    }
 }
 
 async fn ws_handler(
@@ -195,11 +215,7 @@ async fn apply_backend_effect(state: Arc<AppState>, client_id: &str, effect: Bac
             let client_id = client_id.to_string();
             info!("exec request from {}: {}", client_id, command);
             tokio::spawn(async move {
-                let output = tokio::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(&command)
-                    .output()
-                    .await;
+                let output = shell_command(&command).output().await;
                 match output {
                     Ok(o) if o.status.success() => {}
                     Ok(o) => {
@@ -221,11 +237,7 @@ async fn apply_backend_effect(state: Arc<AppState>, client_id: &str, effect: Bac
             if let Some(command) = command {
                 info!("cmd request from {}: {} -> {}", client_id, action, command);
                 tokio::spawn(async move {
-                    let output = tokio::process::Command::new("sh")
-                        .arg("-c")
-                        .arg(&command)
-                        .output()
-                        .await;
+                    let output = shell_command(&command).output().await;
                     match output {
                         Ok(o) if o.status.success() => {}
                         Ok(o) => {
@@ -252,11 +264,31 @@ async fn do_paste(
     state: Arc<AppState>,
     text: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
         let _ = state;
         let _ = text;
         return Err("paste is not supported by this target backend yet".into());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use arboard::Clipboard;
+
+        let mut clipboard = Clipboard::new()?;
+        clipboard.set_text(text.to_string())?;
+
+        sleep(Duration::from_millis(80)).await;
+
+        let mut input = state.input.lock().await;
+        input.key("ControlLeft", true)?;
+        input.key("KeyV", true)?;
+        sleep(Duration::from_millis(35)).await;
+        input.key("KeyV", false)?;
+        sleep(Duration::from_millis(35)).await;
+        input.key("ControlLeft", false)?;
+
+        Ok(())
     }
 
     #[cfg(target_os = "linux")]
