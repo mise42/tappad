@@ -4,7 +4,6 @@ use std::{
     fs, io,
     net::Ipv4Addr,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -198,10 +197,7 @@ pub fn action_capabilities() -> BTreeMap<String, CapabilityStatus> {
 pub fn render_mobile_index(html: &str, actions: &BTreeMap<String, CapabilityStatus>) -> String {
     let manifest = serde_json::to_string(actions).unwrap_or_else(|_| "{}".to_string());
     let script = format!("<script>window.__TAPPAD_ACTIONS__ = {manifest};</script>");
-    html.replace(
-        r#"<script src="/app.js?v11"></script>"#,
-        &format!("{script}\n    <script src=\"/app.js?v11\"></script>"),
-    )
+    html.replace("</head>", &format!("{script}\n</head>"))
 }
 
 fn capability(state: &'static str, note: Option<&str>) -> CapabilityStatus {
@@ -274,11 +270,8 @@ fn preferred_lan_ipv4() -> Option<Ipv4Addr> {
 }
 
 fn generate_token() -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let bytes = nanos.to_be_bytes();
+    let mut bytes = [0u8; 16];
+    getrandom::getrandom(&mut bytes).expect("failed to generate secure pairing token");
     base64_url(bytes)
 }
 
@@ -312,12 +305,13 @@ mod tests {
 
     #[test]
     fn mobile_index_injects_windows_action_manifest() {
-        let html = r#"<html><body><script src="/app.js?v11"></script></body></html>"#;
+        let html = r#"<html><head><script src="/app.js?v12"></script></head><body></body></html>"#;
         let rendered = render_mobile_index(html, &action_capabilities());
 
         assert!(rendered.contains("window.__TAPPAD_ACTIONS__"));
         assert!(rendered.contains("screenrecord.screen.webcam"));
         assert!(rendered.contains("\"state\":\"hidden\""));
+        assert!(rendered.contains(r#"<script src="/app.js?v12"></script>"#));
     }
 
     #[test]
@@ -327,6 +321,7 @@ mod tests {
         let token = resolve_token(dir.path()).expect("token");
 
         assert!(!token.is_empty());
+        assert_eq!(token.len(), 22);
         let stored =
             fs::read_to_string(dir.path().join("pairing-token.txt")).expect("stored token");
         assert_eq!(stored.trim(), token);

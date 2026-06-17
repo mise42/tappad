@@ -296,9 +296,9 @@ document.querySelectorAll("[data-cmd]").forEach((button) => {
   button.addEventListener("click", () => {
     if (button.dataset.note) {
       setActionNotice(button.dataset.note);
-      return;
+    } else {
+      setActionNotice("");
     }
-    setActionNotice("");
     send({ type: "cmd", action });
   });
 });

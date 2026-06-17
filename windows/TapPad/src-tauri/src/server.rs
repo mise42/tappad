@@ -242,7 +242,7 @@ async fn run_named_action(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match action {
         "open_recordings_folder" => {
-            run_shell_command(r#"powershell -NoProfile -Command "$dir = Join-Path $env:USERPROFILE 'Videos\TapPad'; New-Item -ItemType Directory -Force -Path $dir | Out-Null; Start-Process explorer.exe $dir""#).await
+            open_recordings_folder().await
         }
         "screenshot" => {
             let mut input = state.input.lock().await;
@@ -297,6 +297,20 @@ async fn run_named_action(
         | "screenrecord.stop" => Err(format!("Windows beta still routes {action} through an external recording path; see Desktop Host Surface readiness notes.").into()),
         _ => Err(format!("unknown or unsupported Windows action: {action}").into()),
     }
+}
+
+async fn open_recordings_folder() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let Some(user_profile) = std::env::var_os("USERPROFILE") else {
+        return Err("USERPROFILE is not set".into());
+    };
+    let path = std::path::Path::new(&user_profile)
+        .join("Videos")
+        .join("TapPad");
+    std::fs::create_dir_all(&path)?;
+    tokio::process::Command::new("explorer.exe")
+        .arg(path)
+        .spawn()?;
+    Ok(())
 }
 
 async fn run_shell_command(command: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

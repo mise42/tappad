@@ -3452,6 +3452,7 @@ dependencies = [
  "arboard",
  "axum",
  "enigo",
+ "getrandom 0.2.17",
  "include_dir",
  "local-ip-address",
  "serde",

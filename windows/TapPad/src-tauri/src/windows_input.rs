@@ -6,6 +6,8 @@ use enigo::{
     Enigo, Key, Keyboard, Mouse, Settings,
 };
 
+use crate::input_chord::chord_sequence;
+
 pub struct InputDevice {
     enigo: Enigo,
 }
@@ -64,13 +66,7 @@ impl InputDevice {
     }
 
     pub fn chord(&mut self, code_names: &[&str]) -> io::Result<()> {
-        for code_name in code_names {
-            self.key(code_name, true)?;
-        }
-        for code_name in code_names.iter().rev() {
-            self.key(code_name, false)?;
-        }
-        Ok(())
+        chord_sequence(code_names, |code_name, down| self.key(code_name, down))
     }
 }
 
