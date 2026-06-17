@@ -11,11 +11,12 @@ use axum::{
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(any(target_os = "linux", target_os = "windows", test))]
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "windows", test))]
 use tokio::time::sleep;
 #[cfg(target_os = "linux")]
 use tokio::time::timeout;
@@ -280,13 +281,10 @@ async fn do_paste(
 
         sleep(Duration::from_millis(80)).await;
 
-        let mut input = state.input.lock().await;
-        input.key("ControlLeft", true)?;
-        input.key("KeyV", true)?;
-        sleep(Duration::from_millis(35)).await;
-        input.key("KeyV", false)?;
-        sleep(Duration::from_millis(35)).await;
-        input.key("ControlLeft", false)?;
+        send_windows_paste_shortcut(&state.input, |input, code_name, down| {
+            input.key(code_name, down)
+        })
+        .await?;
 
         Ok(())
     }
@@ -348,6 +346,32 @@ async fn do_paste(
 
         Ok(())
     }
+}
+
+async fn send_windows_paste_shortcut<T, E, F>(
+    input: &Mutex<T>,
+    mut send_key: F,
+) -> Result<(), E>
+where
+    F: FnMut(&mut T, &str, bool) -> Result<(), E>,
+{
+    {
+        let mut input = input.lock().await;
+        send_key(&mut input, "ControlLeft", true)?;
+        send_key(&mut input, "KeyV", true)?;
+    }
+    sleep(Duration::from_millis(35)).await;
+    {
+        let mut input = input.lock().await;
+        send_key(&mut input, "KeyV", false)?;
+    }
+    sleep(Duration::from_millis(35)).await;
+    {
+        let mut input = input.lock().await;
+        send_key(&mut input, "ControlLeft", false)?;
+    }
+
+    Ok(())
 }
 
 async fn static_fallback(uri: Uri) -> impl IntoResponse {
@@ -419,4 +443,50 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::send_windows_paste_shortcut;
+    use std::io;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio::sync::Mutex;
+    use tokio::time::{sleep, timeout};
+
+    #[tokio::test]
+    async fn windows_paste_shortcut_releases_lock_between_key_stages() {
+        let events = Arc::new(Mutex::new(Vec::<(String, bool)>::new()));
+
+        let task = tokio::spawn({
+            let events = Arc::clone(&events);
+            async move {
+                send_windows_paste_shortcut(&events, |events, code_name, down| {
+                    events.push((code_name.to_string(), down));
+                    Ok::<(), io::Error>(())
+                })
+                .await
+            }
+        });
+
+        sleep(Duration::from_millis(5)).await;
+
+        let guard = timeout(Duration::from_millis(10), events.lock())
+            .await
+            .expect("input lock should be available while paste waits between keys");
+        drop(guard);
+
+        task.await.expect("paste task should finish").expect("paste helper should succeed");
+
+        let events = events.lock().await.clone();
+        assert_eq!(
+            events,
+            vec![
+                ("ControlLeft".to_string(), true),
+                ("KeyV".to_string(), true),
+                ("KeyV".to_string(), false),
+                ("ControlLeft".to_string(), false),
+            ]
+        );
+    }
 }

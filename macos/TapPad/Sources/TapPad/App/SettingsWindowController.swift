@@ -50,6 +50,7 @@ final class SettingsWindowController: NSWindowController {
         header.font = .systemFont(ofSize: 22, weight: .semibold)
 
         let summary = NSTextField(labelWithString: "Free while the product experience is being validated.")
+        summary.translatesAutoresizingMaskIntoConstraints = false
         summary.font = .systemFont(ofSize: 13)
         summary.textColor = .secondaryLabelColor
         summary.maximumNumberOfLines = 2
@@ -60,6 +61,7 @@ final class SettingsWindowController: NSWindowController {
             ("Pairing", "Token saved on this Mac"),
             ("Web app", pairingInfo.preferredURL.absoluteString),
         ])
+        statusBox.translatesAutoresizingMaskIntoConstraints = false
 
         let buttonRow = NSStackView()
         buttonRow.orientation = .horizontal
@@ -81,6 +83,7 @@ final class SettingsWindowController: NSWindowController {
 
         permissionStatus.font = .systemFont(ofSize: 12)
         permissionStatus.textColor = .secondaryLabelColor
+        permissionStatus.translatesAutoresizingMaskIntoConstraints = false
 
         for view in [header, summary, statusBox, buttonRow, permissionStatus] {
             stack.addArrangedSubview(view)
@@ -103,22 +106,26 @@ final class SettingsWindowController: NSWindowController {
 
     private func makeInfoStack(rows: [(String, String)]) -> NSStackView {
         let stack = NSStackView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
 
         for row in rows {
             let line = NSStackView()
+            line.translatesAutoresizingMaskIntoConstraints = false
             line.orientation = .horizontal
             line.alignment = .firstBaseline
             line.spacing = 12
 
             let label = NSTextField(labelWithString: row.0)
+            label.translatesAutoresizingMaskIntoConstraints = false
             label.font = .systemFont(ofSize: 13, weight: .medium)
             label.textColor = .secondaryLabelColor
             label.widthAnchor.constraint(equalToConstant: 70).isActive = true
 
             let value = NSTextField(labelWithString: row.1)
+            value.translatesAutoresizingMaskIntoConstraints = false
             value.font = .systemFont(ofSize: 13)
             value.isSelectable = true
             value.maximumNumberOfLines = 2
