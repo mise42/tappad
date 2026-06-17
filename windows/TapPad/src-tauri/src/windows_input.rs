@@ -57,6 +57,21 @@ impl InputDevice {
     pub fn type_text(&mut self, text: &str) -> io::Result<()> {
         self.enigo.text(text).map_err(to_io_error)
     }
+
+    pub fn tap(&mut self, code_name: &str) -> io::Result<()> {
+        self.key(code_name, true)?;
+        self.key(code_name, false)
+    }
+
+    pub fn chord(&mut self, code_names: &[&str]) -> io::Result<()> {
+        for code_name in code_names {
+            self.key(code_name, true)?;
+        }
+        for code_name in code_names.iter().rev() {
+            self.key(code_name, false)?;
+        }
+        Ok(())
+    }
 }
 
 fn key_for_code(code: &str) -> Option<Key> {
@@ -119,6 +134,7 @@ fn key_for_code(code: &str) -> Option<Key> {
         "AltLeft" | "AltRight" => Some(Key::Alt),
         "MetaLeft" | "MetaRight" => Some(Key::Meta),
         "CapsLock" => Some(Key::CapsLock),
+        "PrintScreen" => Some(Key::PrintScr),
         "F1" => Some(Key::F1),
         "F2" => Some(Key::F2),
         "F3" => Some(Key::F3),
@@ -131,6 +147,12 @@ fn key_for_code(code: &str) -> Option<Key> {
         "F10" => Some(Key::F10),
         "F11" => Some(Key::F11),
         "F12" => Some(Key::F12),
+        "MediaPrevTrack" => Some(Key::MediaPrevTrack),
+        "MediaPlayPause" => Some(Key::MediaPlayPause),
+        "MediaNextTrack" => Some(Key::MediaNextTrack),
+        "VolumeDown" => Some(Key::VolumeDown),
+        "VolumeMute" => Some(Key::VolumeMute),
+        "VolumeUp" => Some(Key::VolumeUp),
         _ => None,
     }
 }
