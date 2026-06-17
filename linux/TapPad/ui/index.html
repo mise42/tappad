@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TapPad Linux Host Surface</title>
+    <style>
+      :root {
+        --bg: #f7f7f3;
+        --panel: #ffffff;
+        --ink: #171817;
+        --muted: #606660;
+        --line: #d9ded8;
+        --accent: #176b4d;
+        --warn: #8a5a00;
+        --font: "Inter", "Avenir Next", "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        background: var(--bg);
+        font-family: var(--font);
+      }
+
+      main {
+        width: min(1040px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 28px 0 40px;
+      }
+
+      header {
+        margin-bottom: 20px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 34px;
+        line-height: 1.05;
+      }
+
+      p {
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      }
+
+      .panel {
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 18px;
+      }
+
+      .wide {
+        grid-column: 1 / -1;
+      }
+
+      h2,
+      h3 {
+        margin: 0 0 12px;
+      }
+
+      h2 {
+        font-size: 17px;
+      }
+
+      h3 {
+        font-size: 14px;
+      }
+
+      dl,
+      ul {
+        margin: 0;
+        padding: 0;
+      }
+
+      dl {
+        display: grid;
+        gap: 10px;
+      }
+
+      dt {
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      dd {
+        margin: 3px 0 0;
+        word-break: break-word;
+      }
+
+      li {
+        list-style: none;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      button,
+      a.button {
+        border: 0;
+        border-radius: 6px;
+        padding: 10px 12px;
+        font: inherit;
+        color: #fff;
+        background: var(--accent);
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      button.secondary,
+      a.secondary {
+        color: var(--ink);
+        background: #e8ece8;
+      }
+
+      .line {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 8px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .line:first-child {
+        border-top: 0;
+      }
+
+      .badge {
+        flex: none;
+        border-radius: 999px;
+        padding: 4px 8px;
+        font-size: 11px;
+        color: var(--accent);
+        background: #e5f2ed;
+        text-transform: uppercase;
+      }
+
+      .badge[data-state="deferred"],
+      .badge[data-state="manual"],
+      .badge[data-state="degraded"],
+      .badge[data-state="downgraded"] {
+        color: var(--warn);
+        background: #f6edda;
+      }
+
+      .note {
+        margin: 6px 0 0;
+        font-size: 13px;
+      }
+
+      .action-grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      }
+
+      .action-item {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      input {
+        width: min(520px, 100%);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px 12px;
+        font: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>TapPad Linux Host</h1>
+        <p>
+          Start the Linux runtime, pair a mobile input surface, inspect local readiness, and open
+          the Omarchy/Linux web UI without treating TapPad like remote desktop.
+        </p>
+      </header>
+
+      <section class="grid">
+        <article class="panel" id="pairing"></article>
+        <article class="panel" id="server"></article>
+        <article class="panel" id="settings"></article>
+        <article class="panel wide" id="readiness"></article>
+        <article class="panel wide" id="actions"></article>
+      </section>
+    </main>
+
+    <script>
+      const DEFAULT_HOST_STATE_URL = "http://127.0.0.1:8765/api/host-state";
+      const HOST_STATE_STORAGE_KEY = "tappad.linux.hostStateUrl";
+
+      function badge(state) {
+        return `<span class="badge" data-state="${state}">${state}</span>`;
+      }
+
+      function line(label, state, note) {
+        return `<li class="line"><div><strong>${label}</strong>${note ? `<p class="note">${note}</p>` : ""}</div>${badge(state)}</li>`;
+      }
+
+      function settingRows(state) {
+        return `
+          <dl>
+            <div><dt>Port</dt><dd>${state.settings.port}</dd></div>
+            <div><dt>Pairing token</dt><dd>${state.settings.tokenSummary}</dd></div>
+            <div><dt>Launch at login</dt><dd>${state.settings.launchAtLogin.note || state.settings.launchAtLogin.state}</dd></div>
+          </dl>
+          <p class="note">Set <code>TOUCHPAD_HOST</code>, <code>TOUCHPAD_PORT</code>, and <code>TOUCHPAD_TOKEN</code> before starting the Linux runtime to change local settings.</p>
+        `;
+      }
+
+      function render(state) {
+        const pairing = state.pairing;
+        const token = pairing.token || "No token configured";
+        document.getElementById("pairing").innerHTML = `
+          <h2>Pairing</h2>
+          <dl>
+            <div><dt>Preferred link</dt><dd>${pairing.preferredUrl}</dd></div>
+            <div><dt>Fallback link</dt><dd>${pairing.localUrl}</dd></div>
+            <div><dt>Token</dt><dd>${token}</dd></div>
+          </dl>
+          <div class="actions">
+            <button id="copyLink">Copy link</button>
+            <a class="button secondary" href="${pairing.preferredUrl}" target="_blank" rel="noreferrer">Open local web UI</a>
+          </div>
+        `;
+
+        document.getElementById("server").innerHTML = `
+          <h2>Server Status</h2>
+          <dl>
+            <div><dt>Running on</dt><dd>${state.serverStatus.host}:${state.serverStatus.port}</dd></div>
+            <div><dt>Bind address</dt><dd>${state.serverStatus.bindAddress}</dd></div>
+            <div><dt>Token gate</dt><dd>${state.serverStatus.tokenEnabled ? "Enabled" : "Disabled"}</dd></div>
+          </dl>
+        `;
+
+        document.getElementById("settings").innerHTML = `<h2>Settings</h2>${settingRows(state)}`;
+
+        document.getElementById("readiness").innerHTML = `
+          <h2>Readiness</h2>
+          ${state.readiness
+            .map(
+              (group) => `
+                <section>
+                  <h3>${group.title}</h3>
+                  <ul>${group.items.map((item) => line(item.label, item.state, item.note)).join("")}</ul>
+                </section>
+              `,
+            )
+            .join("")}
+        `;
+
+        const visibleActions = Object.entries(state.actions).filter(([, value]) => value.state !== "hidden");
+        document.getElementById("actions").innerHTML = `
+          <h2>Action Parity</h2>
+          <div class="action-grid">
+            ${visibleActions
+              .map(
+                ([name, value]) => `
+                  <article class="action-item">
+                    <strong>${name}</strong>
+                    ${badge(value.state)}
+                    ${value.note ? `<p class="note">${value.note}</p>` : ""}
+                  </article>
+                `,
+              )
+              .join("")}
+          </div>
+        `;
+
+        document.getElementById("copyLink").addEventListener("click", () => {
+          navigator.clipboard.writeText(pairing.preferredUrl);
+        });
+      }
+
+      function renderUnavailable(error, currentUrl) {
+        document.querySelector(".grid").innerHTML = `
+          <article class="panel wide">
+            <h2>Linux runtime unavailable</h2>
+            <p>Start the TapPad Linux runtime, then point this host surface at its local host-state endpoint.</p>
+            <div class="actions">
+              <input id="hostStateUrl" value="${currentUrl}" aria-label="Host-state endpoint" />
+              <button id="retryHostState">Retry</button>
+            </div>
+            <p class="note">${String(error)}</p>
+          </article>
+        `;
+        document.getElementById("retryHostState").addEventListener("click", () => {
+          const nextUrl = document.getElementById("hostStateUrl").value.trim() || DEFAULT_HOST_STATE_URL;
+          localStorage.setItem(HOST_STATE_STORAGE_KEY, nextUrl);
+          loadHostState(nextUrl);
+        });
+      }
+
+      function loadHostState(url) {
+        fetch(url)
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Linux runtime returned ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(render)
+        .catch((error) => {
+          renderUnavailable(error, url);
+        });
+      }
+
+      loadHostState(localStorage.getItem(HOST_STATE_STORAGE_KEY) || DEFAULT_HOST_STATE_URL);
+    </script>
+  </body>
+</html>

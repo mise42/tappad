@@ -9,6 +9,7 @@ use axum::{
     routing::get,
 };
 use std::net::SocketAddr;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(any(target_os = "linux", target_os = "windows", test))]
@@ -379,12 +380,17 @@ where
 }
 
 async fn static_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> impl IntoResponse {
-    let path = uri.path().trim_start_matches('/');
-    let file_path = std::path::PathBuf::from("static").join(if path.is_empty() || path == "/" {
-        "index.html"
-    } else {
-        path
-    });
+    let file_path = match static_file_path(uri.path()) {
+        Some(file_path) => file_path,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                "Invalid path\n",
+            )
+                .into_response();
+        }
+    };
 
     match tokio::fs::read(&file_path).await {
         Ok(body) => {
@@ -397,11 +403,20 @@ async fn static_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> impl I
                 _ => "application/octet-stream",
             };
             let body = if file_path.extension().and_then(|e| e.to_str()) == Some("html") {
-                render_mobile_index(
-                    std::str::from_utf8(&body).unwrap_or_default(),
-                    &host_surface::action_capabilities(&state.commands),
-                )
-                .into_bytes()
+                match std::str::from_utf8(&body) {
+                    Ok(html) => render_mobile_index(
+                        html,
+                        &host_surface::action_capabilities(&state.commands),
+                    )
+                    .into_bytes(),
+                    Err(error) => {
+                        warn!(
+                            "serving HTML file without action manifest because it is not valid UTF-8: {}",
+                            error
+                        );
+                        body
+                    }
+                }
             } else {
                 body
             };
@@ -422,6 +437,25 @@ async fn static_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> impl I
         )
             .into_response(),
     }
+}
+
+fn static_file_path(uri_path: &str) -> Option<PathBuf> {
+    let path = uri_path.trim_start_matches('/');
+    if path.is_empty() {
+        return Some(PathBuf::from("static").join("index.html"));
+    }
+
+    let requested = Path::new(path);
+    if requested.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        )
+    }) {
+        return None;
+    }
+
+    Some(PathBuf::from("static").join(requested))
 }
 
 #[tokio::main]
@@ -464,7 +498,7 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::send_windows_paste_shortcut;
+    use super::{send_windows_paste_shortcut, static_file_path};
     use std::io;
     use std::sync::Arc;
     use std::time::Duration;
@@ -507,5 +541,19 @@ mod tests {
                 ("ControlLeft".to_string(), false),
             ]
         );
+    }
+
+    #[test]
+    fn static_file_path_rejects_parent_directory_traversal() {
+        assert_eq!(
+            static_file_path("/").expect("index path"),
+            std::path::PathBuf::from("static/index.html")
+        );
+        assert_eq!(
+            static_file_path("/app.js").expect("asset path"),
+            std::path::PathBuf::from("static/app.js")
+        );
+        assert!(static_file_path("/../Cargo.toml").is_none());
+        assert!(static_file_path("/static/../../Cargo.toml").is_none());
     }
 }

@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default desktop capability for the TapPad Linux host surface.","local":true,"windows":["main"],"permissions":["core:default"]}}
