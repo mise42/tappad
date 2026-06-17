@@ -28,4 +28,12 @@ impl InputDevice {
     pub fn type_text(&mut self, _text: &str) -> io::Result<()> {
         Ok(())
     }
+
+    pub fn tap(&mut self, _code_name: &str) -> io::Result<()> {
+        Ok(())
+    }
+
+    pub fn chord(&mut self, _code_names: &[&str]) -> io::Result<()> {
+        Ok(())
+    }
 }

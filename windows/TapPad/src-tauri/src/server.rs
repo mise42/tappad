@@ -1,5 +1,5 @@
 use axum::{
-    Router,
+    Json, Router,
     body::Body,
     extract::{
         Query, State,
@@ -11,7 +11,9 @@ use axum::{
 };
 use include_dir::{Dir, include_dir};
 use std::{
+    io,
     net::SocketAddr,
+    path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -20,6 +22,10 @@ use std::{
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
+use crate::host_surface::{
+    HostSurfaceState, RuntimeSettings, action_capabilities, host_surface_state,
+    render_mobile_index, reset_token, resolve_runtime_settings,
+};
 use crate::protocol::{ClientMessage, ServerMessage};
 #[path = "../../../../src/protocol_router.rs"]
 mod protocol_router;
@@ -38,33 +44,46 @@ struct WsQuery {
     token: Option<String>,
 }
 
-struct AppState {
+pub struct SharedState {
     input: Mutex<InputDevice>,
-    token: Option<String>,
     router: Mutex<ProtocolRouter>,
+    runtime: Mutex<RuntimeSettings>,
+    token_store_dir: PathBuf,
 }
 
-pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let host = std::env::var("TOUCHPAD_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let port = std::env::var("TOUCHPAD_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(8765u16);
-    let token = std::env::var("TOUCHPAD_TOKEN").ok();
+impl SharedState {
+    pub fn new(token_store_dir: PathBuf) -> io::Result<Self> {
+        Ok(Self {
+            input: Mutex::new(InputDevice::new()?),
+            router: Mutex::new(ProtocolRouter::new()),
+            runtime: Mutex::new(resolve_runtime_settings(&token_store_dir)?),
+            token_store_dir,
+        })
+    }
 
-    let input = InputDevice::new()?;
-    let state = Arc::new(AppState {
-        input: Mutex::new(input),
-        token,
-        router: Mutex::new(ProtocolRouter::new()),
-    });
+    pub async fn host_state(&self) -> HostSurfaceState {
+        let runtime = self.runtime.lock().await.clone();
+        host_surface_state(&runtime)
+    }
+
+    pub async fn reset_pairing_token(&self) -> io::Result<()> {
+        let token = reset_token(&self.token_store_dir)?;
+        let mut runtime = self.runtime.lock().await;
+        runtime.token = token;
+        Ok(())
+    }
+}
+
+pub async fn run(state: Arc<SharedState>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let runtime = state.runtime.lock().await.clone();
+    let addr: SocketAddr = format!("{}:{}", runtime.bind_host, runtime.port).parse()?;
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
+        .route("/api/host-state", get(api_host_state))
         .fallback(static_fallback)
         .with_state(state);
 
-    let addr: SocketAddr = format!("{host}:{port}").parse()?;
     info!("TapPad Windows backend listening on http://{addr}");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -72,14 +91,19 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
+async fn api_host_state(State(state): State<Arc<SharedState>>) -> Json<HostSurfaceState> {
+    Json(state.host_state().await)
+}
+
 async fn ws_handler(
     ws: WebSocketUpgrade,
     Query(query): Query<WsQuery>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<SharedState>>,
 ) -> impl IntoResponse {
-    if let Some(expected) = &state.token {
+    let expected = state.runtime.lock().await.token.clone();
+    if !expected.is_empty() {
         match &query.token {
-            Some(provided) if provided == expected => {}
+            Some(provided) if provided == &expected => {}
             _ => return (StatusCode::FORBIDDEN, "Forbidden").into_response(),
         }
     }
@@ -88,10 +112,11 @@ async fn ws_handler(
     ws.on_upgrade(move |socket| handle_socket(socket, state, client_id))
 }
 
-async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: String) {
+async fn handle_socket(mut socket: WebSocket, state: Arc<SharedState>, client_id: String) {
     info!("client connected: {client_id}");
 
-    let ready = ServerMessage::ready(get_hostname());
+    let hostname = state.runtime.lock().await.hostname.clone();
+    let ready = ServerMessage::ready(hostname);
     let _ = socket
         .send(WsMessage::Text(
             serde_json::to_string(&ready).unwrap_or_default().into(),
@@ -121,7 +146,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: S
     info!("client disconnected: {client_id}");
 }
 
-async fn apply_backend_effect(state: Arc<AppState>, effect: BackendEffect) {
+async fn apply_backend_effect(state: Arc<SharedState>, effect: BackendEffect) {
     match effect {
         BackendEffect::Move { dx, dy } => {
             let mut input = state.input.lock().await;
@@ -172,7 +197,7 @@ async fn apply_backend_effect(state: Arc<AppState>, effect: BackendEffect) {
         }
         BackendEffect::Cmd { action } => {
             tokio::spawn(async move {
-                if let Err(error) = run_named_action(&action).await {
+                if let Err(error) = run_named_action(state, &action).await {
                     warn!("cmd failed for {action}: {error}");
                 }
             });
@@ -181,7 +206,7 @@ async fn apply_backend_effect(state: Arc<AppState>, effect: BackendEffect) {
 }
 
 async fn do_paste(
-    state: Arc<AppState>,
+    state: Arc<SharedState>,
     text: String,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     #[cfg(target_os = "windows")]
@@ -211,11 +236,81 @@ async fn do_paste(
     }
 }
 
-async fn run_named_action(action: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn run_named_action(
+    state: Arc<SharedState>,
+    action: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match action {
+        "open_recordings_folder" => {
+            open_recordings_folder().await
+        }
+        "screenshot" => {
+            let mut input = state.input.lock().await;
+            input.chord(&["MetaLeft", "PrintScreen"])?;
+            Ok(())
+        }
+        "close_window" => {
+            let mut input = state.input.lock().await;
+            input.chord(&["AltLeft", "F4"])?;
+            Ok(())
+        }
+        "app_launcher" => {
+            let mut input = state.input.lock().await;
+            input.tap("MetaLeft")?;
+            Ok(())
+        }
+        "nightlight.toggle" => run_shell_command("start ms-settings:nightlight").await,
         "lock_screen" => run_shell_command("rundll32.exe user32.dll,LockWorkStation").await,
+        "media.prev" => {
+            let mut input = state.input.lock().await;
+            input.tap("MediaPrevTrack")?;
+            Ok(())
+        }
+        "media.play_pause" => {
+            let mut input = state.input.lock().await;
+            input.tap("MediaPlayPause")?;
+            Ok(())
+        }
+        "media.next" => {
+            let mut input = state.input.lock().await;
+            input.tap("MediaNextTrack")?;
+            Ok(())
+        }
+        "media.volume_down" => {
+            let mut input = state.input.lock().await;
+            input.tap("VolumeDown")?;
+            Ok(())
+        }
+        "media.mute" => {
+            let mut input = state.input.lock().await;
+            input.tap("VolumeMute")?;
+            Ok(())
+        }
+        "media.volume_up" => {
+            let mut input = state.input.lock().await;
+            input.tap("VolumeUp")?;
+            Ok(())
+        }
+        "screenrecord.screen"
+        | "screenrecord.window"
+        | "screenrecord.screen.audio"
+        | "screenrecord.stop" => Err(format!("Windows beta still routes {action} through an external recording path; see Desktop Host Surface readiness notes.").into()),
         _ => Err(format!("unknown or unsupported Windows action: {action}").into()),
     }
+}
+
+async fn open_recordings_folder() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let Some(user_profile) = std::env::var_os("USERPROFILE") else {
+        return Err("USERPROFILE is not set".into());
+    };
+    let path = std::path::Path::new(&user_profile)
+        .join("Videos")
+        .join("TapPad");
+    std::fs::create_dir_all(&path)?;
+    tokio::process::Command::new("explorer.exe")
+        .arg(path)
+        .spawn()?;
+    Ok(())
 }
 
 async fn run_shell_command(command: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -250,6 +345,18 @@ async fn static_fallback(uri: Uri) -> Response {
         return (StatusCode::NOT_FOUND, "Not found\n").into_response();
     };
 
+    if path == "index.html" {
+        let rendered = render_mobile_index(
+            std::str::from_utf8(file.contents()).unwrap_or_default(),
+            &action_capabilities(),
+        );
+        return Response::builder()
+            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+            .header(header::CACHE_CONTROL, "no-store")
+            .body(Body::from(rendered))
+            .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
+    }
+
     let mime = match file
         .path()
         .extension()
@@ -268,12 +375,4 @@ async fn static_fallback(uri: Uri) -> Response {
         .header(header::CACHE_CONTROL, "no-store")
         .body(Body::from(file.contents().to_vec()))
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
-}
-
-fn get_hostname() -> String {
-    std::env::var("COMPUTERNAME")
-        .or_else(|_| std::env::var("HOSTNAME"))
-        .ok()
-        .filter(|hostname| !hostname.trim().is_empty())
-        .unwrap_or_else(|| "unknown".to_string())
 }

@@ -6,6 +6,7 @@ const sendTextButton = document.getElementById("sendText");
 const releaseAllButton = document.getElementById("releaseAll");
 
 const query = new URLSearchParams(window.location.search);
+const actionCapabilities = window.__TAPPAD_ACTIONS__ || {};
 let ws;
 let activePointers = new Map();
 let lastTapTime = 0;
@@ -259,10 +260,46 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
 
 releaseAllButton.addEventListener("click", releaseAllKeys);
 
+function ensureActionNotice() {
+  let notice = document.getElementById("actionNotice");
+  if (notice) return notice;
+
+  notice = document.createElement("p");
+  notice.id = "actionNotice";
+  notice.style.margin = "12px 0 0";
+  notice.style.color = "rgba(255,255,255,0.78)";
+  notice.style.fontSize = "13px";
+  const panel = document.querySelector("#panel-commands .panel-scroll");
+  if (panel) panel.appendChild(notice);
+  return notice;
+}
+
+function setActionNotice(text) {
+  const notice = ensureActionNotice();
+  notice.textContent = text;
+}
+
 // Command buttons
 document.querySelectorAll("[data-cmd]").forEach((button) => {
+  const action = button.dataset.cmd;
+  const capability = actionCapabilities[action];
+
+  if (capability?.state === "hidden") {
+    button.remove();
+    return;
+  }
+
+  if (capability?.state === "downgraded" && capability.note) {
+    button.dataset.note = capability.note;
+  }
+
   button.addEventListener("click", () => {
-    send({ type: "cmd", action: button.dataset.cmd });
+    if (button.dataset.note) {
+      setActionNotice(button.dataset.note);
+    } else {
+      setActionNotice("");
+    }
+    send({ type: "cmd", action });
   });
 });
 

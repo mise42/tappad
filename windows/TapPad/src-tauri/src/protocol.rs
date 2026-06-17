@@ -14,7 +14,11 @@ pub enum ClientMessage {
         click_count: u8,
     },
     #[serde(rename = "key")]
-    Key { code: String, #[serde(default)] down: bool },
+    Key {
+        code: String,
+        #[serde(default)]
+        down: bool,
+    },
     #[serde(rename = "text")]
     Text { value: String },
     #[serde(rename = "paste")]
