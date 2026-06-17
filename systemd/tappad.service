@@ -1,0 +1,15 @@
+[Unit]
+Description=TapPad Linux backend (Rust)
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Work/personal/tappad
+Environment=TOUCHPAD_HOST=0.0.0.0
+Environment=TOUCHPAD_PORT=8765
+EnvironmentFile=-%h/.config/tappad.env
+ExecStart=%h/Work/personal/tappad/target/release/tappad
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

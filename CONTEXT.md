@@ -10,6 +10,10 @@ A mobile input surface for controlling a desktop machine from a phone or tablet.
 The browser-based control surface that turns a phone or tablet into an input peripheral for a desktop machine.
 TapPad is a mobile input surface, not a remote desktop.
 
+**Desktop Host Surface**:
+The target-desktop interface that helps a user start TapPad, pair a mobile device, inspect connection status, grant permissions, and change local settings.
+Each supported target backend has a desktop host surface; Linux requires a GUI desktop host surface rather than only a command-line process.
+
 **Target Backend**:
 The desktop-side backend that receives mobile input and applies it to the target desktop environment. Omarchy/Linux and macOS are different target backends.
 
@@ -27,6 +31,9 @@ A MacBook user working with an external display who wants a phone or tablet to b
 
 **Product Name**:
 TapPad is the public product name.
+
+**Use Scenario**:
+A concrete situation where a first buyer reaches for TapPad, such as vibe coding on an external display, temporary trackpad use, text transfer, or presentation control. A use scenario is not a product category or product name.
 
 **Desktop Action**:
 An intentional action requested by the mobile input surface, such as taking a screenshot, changing workspace, or controlling media playback.

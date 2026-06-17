@@ -11,14 +11,19 @@ use axum::{
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(any(target_os = "linux", target_os = "windows", test))]
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
+#[cfg(any(target_os = "linux", target_os = "windows", test))]
+use tokio::time::sleep;
 #[cfg(target_os = "linux")]
-use tokio::time::{sleep, timeout};
+use tokio::time::timeout;
 
 mod commands;
+#[cfg(target_os = "windows")]
+mod enigo_input;
 mod input;
 mod protocol;
 mod protocol_router;
@@ -70,6 +75,22 @@ fn get_hostname() -> String {
         .map(|hostname| hostname.trim().to_string())
         .filter(|hostname| !hostname.is_empty())
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn shell_command(command: &str) -> tokio::process::Command {
+    #[cfg(target_os = "windows")]
+    {
+        let mut cmd = tokio::process::Command::new("cmd");
+        cmd.arg("/C").arg(command);
+        cmd
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let mut cmd = tokio::process::Command::new("sh");
+        cmd.arg("-c").arg(command);
+        cmd
+    }
 }
 
 async fn ws_handler(
@@ -195,11 +216,7 @@ async fn apply_backend_effect(state: Arc<AppState>, client_id: &str, effect: Bac
             let client_id = client_id.to_string();
             info!("exec request from {}: {}", client_id, command);
             tokio::spawn(async move {
-                let output = tokio::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(&command)
-                    .output()
-                    .await;
+                let output = shell_command(&command).output().await;
                 match output {
                     Ok(o) if o.status.success() => {}
                     Ok(o) => {
@@ -221,11 +238,7 @@ async fn apply_backend_effect(state: Arc<AppState>, client_id: &str, effect: Bac
             if let Some(command) = command {
                 info!("cmd request from {}: {} -> {}", client_id, action, command);
                 tokio::spawn(async move {
-                    let output = tokio::process::Command::new("sh")
-                        .arg("-c")
-                        .arg(&command)
-                        .output()
-                        .await;
+                    let output = shell_command(&command).output().await;
                     match output {
                         Ok(o) if o.status.success() => {}
                         Ok(o) => {
@@ -252,11 +265,28 @@ async fn do_paste(
     state: Arc<AppState>,
     text: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
         let _ = state;
         let _ = text;
         return Err("paste is not supported by this target backend yet".into());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use arboard::Clipboard;
+
+        let mut clipboard = Clipboard::new()?;
+        clipboard.set_text(text.to_string())?;
+
+        sleep(Duration::from_millis(80)).await;
+
+        send_windows_paste_shortcut(&state.input, |input, code_name, down| {
+            input.key(code_name, down)
+        })
+        .await?;
+
+        Ok(())
     }
 
     #[cfg(target_os = "linux")]
@@ -316,6 +346,32 @@ async fn do_paste(
 
         Ok(())
     }
+}
+
+async fn send_windows_paste_shortcut<T, E, F>(
+    input: &Mutex<T>,
+    mut send_key: F,
+) -> Result<(), E>
+where
+    F: FnMut(&mut T, &str, bool) -> Result<(), E>,
+{
+    {
+        let mut input = input.lock().await;
+        send_key(&mut input, "ControlLeft", true)?;
+        send_key(&mut input, "KeyV", true)?;
+    }
+    sleep(Duration::from_millis(35)).await;
+    {
+        let mut input = input.lock().await;
+        send_key(&mut input, "KeyV", false)?;
+    }
+    sleep(Duration::from_millis(35)).await;
+    {
+        let mut input = input.lock().await;
+        send_key(&mut input, "ControlLeft", false)?;
+    }
+
+    Ok(())
 }
 
 async fn static_fallback(uri: Uri) -> impl IntoResponse {
@@ -387,4 +443,50 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::send_windows_paste_shortcut;
+    use std::io;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio::sync::Mutex;
+    use tokio::time::{sleep, timeout};
+
+    #[tokio::test]
+    async fn windows_paste_shortcut_releases_lock_between_key_stages() {
+        let events = Arc::new(Mutex::new(Vec::<(String, bool)>::new()));
+
+        let task = tokio::spawn({
+            let events = Arc::clone(&events);
+            async move {
+                send_windows_paste_shortcut(&events, |events, code_name, down| {
+                    events.push((code_name.to_string(), down));
+                    Ok::<(), io::Error>(())
+                })
+                .await
+            }
+        });
+
+        sleep(Duration::from_millis(5)).await;
+
+        let guard = timeout(Duration::from_millis(10), events.lock())
+            .await
+            .expect("input lock should be available while paste waits between keys");
+        drop(guard);
+
+        task.await.expect("paste task should finish").expect("paste helper should succeed");
+
+        let events = events.lock().await.clone();
+        assert_eq!(
+            events,
+            vec![
+                ("ControlLeft".to_string(), true),
+                ("KeyV".to_string(), true),
+                ("KeyV".to_string(), false),
+                ("ControlLeft".to_string(), false),
+            ]
+        );
+    }
 }

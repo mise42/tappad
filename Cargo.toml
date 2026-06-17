@@ -1,5 +1,5 @@
 [package]
-name = "omarchy-touchpad"
+name = "tappad"
 version = "0.1.0"
 edition = "2024"
 
@@ -14,3 +14,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures = "0.3"
 tokio-util = "0.7"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+arboard = "3.6"
+enigo = "0.6"

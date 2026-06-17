@@ -27,10 +27,16 @@ do {
 let app = NSApplication.shared
 let delegate = TapPadAppDelegate(pairingInfo: pairingInfo)
 app.delegate = delegate
-app.setActivationPolicy(.accessory)
 app.run()
 
 private func discoverStaticRoot() -> URL {
+    if let bundled = Bundle.main.resourceURL?.appendingPathComponent("static") {
+        let index = bundled.appendingPathComponent("index.html")
+        if FileManager.default.fileExists(atPath: index.path) {
+            return bundled
+        }
+    }
+
     if let explicit = ProcessInfo.processInfo.environment["TAPPAD_STATIC_ROOT"] {
         return URL(fileURLWithPath: explicit)
     }
