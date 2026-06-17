@@ -6,6 +6,7 @@ PACKAGE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$PACKAGE_DIR/../.." && pwd)"
 DIST_DIR="$PACKAGE_DIR/.dist"
 APP_DIR="$DIST_DIR/TapPad.app"
+ZIP_PATH="$DIST_DIR/TapPad-mac-beta.zip"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
@@ -31,5 +32,8 @@ cp -R "$REPO_ROOT/static" "$RESOURCES_DIR/static"
 codesign --force --deep --sign - "$APP_DIR" >/dev/null
 xattr -dr com.apple.quarantine "$APP_DIR" 2>/dev/null || true
 xattr -dr com.apple.provenance "$APP_DIR" 2>/dev/null || true
+rm -f "$ZIP_PATH"
+ditto -c -k --keepParent "$APP_DIR" "$ZIP_PATH"
 
 echo "$APP_DIR"
+echo "$ZIP_PATH"

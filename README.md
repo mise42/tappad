@@ -14,6 +14,9 @@ cd ~/Work/personal/tappad/macos/TapPad
 open .dist/TapPad.app
 ```
 
+The packaging script also creates `.dist/TapPad-mac-beta.zip` for the public
+beta download flow.
+
 TapPad runs as a menu bar app. Use the menu to open Settings, show the pairing
 QR code, copy the pairing link, or check Accessibility permission.
 
