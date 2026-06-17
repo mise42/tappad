@@ -462,12 +462,9 @@ fn static_file_path(uri_path: &str) -> Option<PathBuf> {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let host = std::env::var("TOUCHPAD_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let port = std::env::var("TOUCHPAD_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(8765u16);
     let runtime = RuntimeSettings::from_env();
+    let bind_host = runtime.bind_host.clone();
+    let bind_port = runtime.port;
     let token = runtime.token.clone();
 
     let input = InputDevice::new().expect("Failed to initialize input device");
@@ -486,7 +483,7 @@ async fn main() {
         .fallback(static_fallback)
         .with_state(state.clone());
 
-    let addr: SocketAddr = format!("{}:{}", host, port).parse().unwrap();
+    let addr: SocketAddr = format!("{}:{}", bind_host, bind_port).parse().unwrap();
     info!("touchpad listening on http://{}", addr);
     if state.token.is_some() {
         info!("auth token enabled");

@@ -86,13 +86,14 @@ fn reset_pairing_token(store: State<'_, SettingsStore>) -> LinuxHostSettings {
 }
 
 #[tauri::command]
-fn load_host_state(store: State<'_, SettingsStore>) -> Result<serde_json::Value, String> {
-    let settings = store
-        .settings
-        .lock()
-        .expect("settings lock poisoned")
-        .clone();
-    fetch_host_state(&settings.host_state_url)
+fn load_host_state(
+    url: Option<String>,
+    store: State<'_, SettingsStore>,
+) -> Result<serde_json::Value, String> {
+    let endpoint = host_state_endpoint(url, &store)?;
+    let state = fetch_host_state(&endpoint)?;
+    remember_host_state_endpoint(endpoint, &store);
+    Ok(state)
 }
 
 fn main() {
@@ -173,6 +174,35 @@ fn fetch_host_state(url: &str) -> Result<serde_json::Value, String> {
     serde_json::from_str(body).map_err(|error| format!("Invalid host-state JSON: {error}"))
 }
 
+fn host_state_endpoint(
+    requested_url: Option<String>,
+    store: &SettingsStore,
+) -> Result<String, String> {
+    let endpoint = requested_url
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            store
+                .settings
+                .lock()
+                .expect("settings lock poisoned")
+                .host_state_url
+                .clone()
+        });
+    parse_local_http_url(&endpoint)?;
+    Ok(endpoint)
+}
+
+fn remember_host_state_endpoint(endpoint: String, store: &SettingsStore) {
+    let mut settings = store.settings.lock().expect("settings lock poisoned");
+    if settings.host_state_url == endpoint {
+        return;
+    }
+
+    settings.host_state_url = endpoint;
+    let _ = write_settings(&store.path, &settings);
+}
+
 fn parse_local_http_url(url: &str) -> Result<(String, u16, String), String> {
     let rest = url
         .strip_prefix("http://")
@@ -192,8 +222,12 @@ fn parse_local_http_url(url: &str) -> Result<(String, u16, String), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{LinuxHostSettings, parse_local_http_url, read_settings, write_settings};
+    use super::{
+        LinuxHostSettings, SettingsStore, host_state_endpoint, parse_local_http_url, read_settings,
+        write_settings,
+    };
     use std::path::PathBuf;
+    use std::sync::Mutex;
 
     #[test]
     fn saved_settings_drive_the_local_host_state_endpoint() {
@@ -244,5 +278,29 @@ mod tests {
         assert_eq!(loaded.port, 9777);
         assert_eq!(loaded.token.as_deref(), Some("saved"));
         assert!(loaded.launch_at_login);
+    }
+
+    #[test]
+    fn retry_endpoint_overrides_persisted_host_state_url_for_tauri_loads() {
+        let store = SettingsStore {
+            path: PathBuf::from(std::env::temp_dir()).join("unused-tappad-settings.json"),
+            settings: Mutex::new(LinuxHostSettings::default()),
+        };
+
+        assert_eq!(
+            host_state_endpoint(
+                Some("http://127.0.0.1:9876/api/host-state".to_string()),
+                &store
+            )
+            .expect("retry URL"),
+            "http://127.0.0.1:9876/api/host-state"
+        );
+        assert!(
+            host_state_endpoint(
+                Some("http://example.com:9876/api/host-state".to_string()),
+                &store
+            )
+            .is_err()
+        );
     }
 }

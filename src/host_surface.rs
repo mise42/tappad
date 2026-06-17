@@ -1,6 +1,7 @@
 use crate::commands::CommandRegistry;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PairingLinks {
@@ -69,15 +70,39 @@ pub struct RuntimeSettings {
     pub hostname: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalHostSettings {
+    port: u16,
+    token: Option<String>,
+}
+
 impl RuntimeSettings {
     pub fn from_env() -> Self {
-        let bind_host = std::env::var("TOUCHPAD_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-        let port = std::env::var("TOUCHPAD_PORT")
-            .ok()
+        let local_settings = read_local_host_settings(&local_settings_path());
+        Self::from_sources(
+            std::env::var("TOUCHPAD_HOST").ok(),
+            std::env::var("TOUCHPAD_PORT").ok(),
+            std::env::var("TOUCHPAD_TOKEN").ok(),
+            local_settings,
+            crate::get_hostname(),
+        )
+    }
+
+    fn from_sources(
+        env_host: Option<String>,
+        env_port: Option<String>,
+        env_token: Option<String>,
+        local_settings: Option<LocalHostSettings>,
+        hostname: String,
+    ) -> Self {
+        let bind_host = env_host.unwrap_or_else(|| "0.0.0.0".to_string());
+        let port = env_port
             .and_then(|value| value.parse().ok())
+            .or_else(|| local_settings.as_ref().map(|settings| settings.port))
             .unwrap_or(8765u16);
-        let token = std::env::var("TOUCHPAD_TOKEN")
-            .ok()
+        let token = env_token
+            .or_else(|| local_settings.and_then(|settings| settings.token))
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
 
@@ -85,7 +110,7 @@ impl RuntimeSettings {
             bind_host,
             port,
             token,
-            hostname: crate::get_hostname(),
+            hostname,
         }
     }
 
@@ -114,6 +139,20 @@ impl RuntimeSettings {
     }
 }
 
+fn local_settings_path() -> PathBuf {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    home.join(".config")
+        .join("tappad")
+        .join("linux-host-settings.json")
+}
+
+fn read_local_host_settings(path: &Path) -> Option<LocalHostSettings> {
+    let text = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
 pub fn host_surface_state(
     settings: &RuntimeSettings,
     commands: &CommandRegistry,
@@ -125,7 +164,7 @@ pub fn host_surface_state(
         settings: SettingsSummary {
             port: settings.port,
             token_summary: if settings.token.is_some() {
-                "Token provided by TOUCHPAD_TOKEN".to_string()
+                "Pairing token configured".to_string()
             } else {
                 "No pairing token configured".to_string()
             },
@@ -213,6 +252,7 @@ fn readiness(label: &'static str, state: &'static str, note: Option<&str>) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn host_surface_reports_linux_action_parity_and_deferred_webcam() {
@@ -258,5 +298,64 @@ mod tests {
         assert!(rendered.contains("screenrecord.screen.webcam"));
         assert!(rendered.contains("\"state\":\"deferred\""));
         assert!(rendered.contains(r#"<script src="/app.js"></script>"#));
+    }
+
+    #[test]
+    fn runtime_settings_use_saved_gui_settings_when_env_is_absent() {
+        let settings = RuntimeSettings::from_sources(
+            None,
+            None,
+            None,
+            Some(LocalHostSettings {
+                port: 9876,
+                token: Some("saved-token".to_string()),
+            }),
+            "omarchy".to_string(),
+        );
+
+        assert_eq!(settings.bind_host, "0.0.0.0");
+        assert_eq!(settings.port, 9876);
+        assert_eq!(settings.token.as_deref(), Some("saved-token"));
+        assert_eq!(
+            settings.pairing_links().preferred_url,
+            "http://omarchy:9876?token=saved-token"
+        );
+    }
+
+    #[test]
+    fn environment_still_overrides_saved_gui_settings() {
+        let settings = RuntimeSettings::from_sources(
+            Some("127.0.0.1".to_string()),
+            Some("8766".to_string()),
+            Some("env-token".to_string()),
+            Some(LocalHostSettings {
+                port: 9876,
+                token: Some("saved-token".to_string()),
+            }),
+            "omarchy".to_string(),
+        );
+
+        assert_eq!(settings.bind_host, "127.0.0.1");
+        assert_eq!(settings.port, 8766);
+        assert_eq!(settings.token.as_deref(), Some("env-token"));
+    }
+
+    #[test]
+    fn runtime_reads_the_same_linux_host_settings_file_as_the_gui() {
+        let path = PathBuf::from(std::env::temp_dir()).join(format!(
+            "tappad-runtime-host-settings-{}.json",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            r#"{"hostStateUrl":"http://127.0.0.1:9999/api/host-state","port":9999,"token":"file-token","launchAtLogin":true}"#,
+        )
+        .expect("write settings");
+
+        let settings = read_local_host_settings(&path).expect("read settings");
+        let _ = std::fs::remove_file(path);
+
+        assert_eq!(settings.port, 9999);
+        assert_eq!(settings.token.as_deref(), Some("file-token"));
     }
 }

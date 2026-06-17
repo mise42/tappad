@@ -430,7 +430,7 @@
 
       function getHostState(url) {
         if (invoke) {
-          return invoke("load_host_state");
+          return invoke("load_host_state", { url });
         }
 
         return fetch(url)
