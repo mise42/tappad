@@ -186,6 +186,11 @@
         padding: 10px 12px;
         font: inherit;
       }
+
+      input[type="checkbox"] {
+        width: auto;
+        margin-right: 8px;
+      }
     </style>
   </head>
   <body>
@@ -210,6 +215,7 @@
     <script>
       const DEFAULT_HOST_STATE_URL = "http://127.0.0.1:8765/api/host-state";
       const HOST_STATE_STORAGE_KEY = "tappad.linux.hostStateUrl";
+      const invoke = window.__TAURI__?.core?.invoke;
 
       function badge(state) {
         return `<span class="badge" data-state="${state}">${state}</span>`;
@@ -219,18 +225,65 @@
         return `<li class="line"><div><strong>${label}</strong>${note ? `<p class="note">${note}</p>` : ""}</div>${badge(state)}</li>`;
       }
 
-      function settingRows(state) {
+      function settingRows(state, localSettings) {
         return `
-          <dl>
-            <div><dt>Port</dt><dd>${state.settings.port}</dd></div>
-            <div><dt>Pairing token</dt><dd>${state.settings.tokenSummary}</dd></div>
-            <div><dt>Launch at login</dt><dd>${state.settings.launchAtLogin.note || state.settings.launchAtLogin.state}</dd></div>
-          </dl>
-          <p class="note">Set <code>TOUCHPAD_HOST</code>, <code>TOUCHPAD_PORT</code>, and <code>TOUCHPAD_TOKEN</code> before starting the Linux runtime to change local settings.</p>
+          <form id="settingsForm">
+            <dl>
+              <div>
+                <dt>Runtime port</dt>
+                <dd><input id="settingsPort" inputmode="numeric" value="${localSettings.port || state.settings.port}" /></dd>
+              </div>
+              <div>
+                <dt>Pairing token</dt>
+                <dd><input id="settingsToken" value="${localSettings.token || ""}" placeholder="No pairing token configured" /></dd>
+              </div>
+              <div>
+                <dt>Launch at login</dt>
+                <dd><label><input id="settingsLaunch" type="checkbox" ${localSettings.launchAtLogin ? "checked" : ""} /> Start TapPad when the desktop session starts</label></dd>
+              </div>
+            </dl>
+            <div class="actions">
+              <button type="submit">Save settings</button>
+              <button class="secondary" type="button" id="resetToken">Reset token</button>
+            </div>
+          </form>
+          <p class="note" id="settingsStatus">${state.settings.launchAtLogin.note || state.settings.launchAtLogin.state}</p>
         `;
       }
 
-      function render(state) {
+      function bindSettingsForm(state, localSettings) {
+        const form = document.getElementById("settingsForm");
+        const status = document.getElementById("settingsStatus");
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const port = Number.parseInt(document.getElementById("settingsPort").value, 10);
+          const token = document.getElementById("settingsToken").value.trim() || null;
+          const launchAtLogin = document.getElementById("settingsLaunch").checked;
+
+          saveLocalSettings({ port, token, launchAtLogin })
+            .then((next) => {
+              localStorage.setItem(HOST_STATE_STORAGE_KEY, next.hostStateUrl);
+              status.textContent = "Settings saved. Restart the Linux runtime for port or token changes to take effect.";
+              return loadHostState(next.hostStateUrl);
+            })
+            .catch((error) => {
+              status.textContent = String(error);
+            });
+        });
+
+        document.getElementById("resetToken").addEventListener("click", () => {
+          resetPairingToken()
+            .then((next) => {
+              document.getElementById("settingsToken").value = next.token || "";
+              status.textContent = "Pairing token reset. Save settings and restart the Linux runtime to require it.";
+            })
+            .catch((error) => {
+              status.textContent = String(error);
+            });
+        });
+      }
+
+      function renderWithSettings(state, localSettings) {
         const pairing = state.pairing;
         const token = pairing.token || "No token configured";
         document.getElementById("pairing").innerHTML = `
@@ -255,7 +308,7 @@
           </dl>
         `;
 
-        document.getElementById("settings").innerHTML = `<h2>Settings</h2>${settingRows(state)}`;
+        document.getElementById("settings").innerHTML = `<h2>Settings</h2>${settingRows(state, localSettings)}`;
 
         document.getElementById("readiness").innerHTML = `
           <h2>Readiness</h2>
@@ -292,6 +345,22 @@
         document.getElementById("copyLink").addEventListener("click", () => {
           navigator.clipboard.writeText(pairing.preferredUrl);
         });
+        bindSettingsForm(state, localSettings);
+      }
+
+      function render(state) {
+        getLocalSettings()
+          .then((localSettings) => {
+            renderWithSettings(state, localSettings);
+          })
+          .catch(() => {
+            renderWithSettings(state, {
+              hostStateUrl: localStorage.getItem(HOST_STATE_STORAGE_KEY) || DEFAULT_HOST_STATE_URL,
+              port: state.settings.port,
+              token: state.pairing.token,
+              launchAtLogin: false,
+            });
+          });
       }
 
       function renderUnavailable(error, currentUrl) {
@@ -314,17 +383,63 @@
       }
 
       function loadHostState(url) {
-        fetch(url)
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(`Linux runtime returned ${response.status}`);
-          }
-          return response.json();
-        })
-        .then(render)
-        .catch((error) => {
-          renderUnavailable(error, url);
-        });
+        getHostState(url)
+          .then(render)
+          .catch((error) => {
+            renderUnavailable(error, url);
+          });
+      }
+
+      function getLocalSettings() {
+        if (!invoke) {
+          return Promise.resolve({
+            hostStateUrl: localStorage.getItem(HOST_STATE_STORAGE_KEY) || DEFAULT_HOST_STATE_URL,
+            port: 8765,
+            token: null,
+            launchAtLogin: false,
+          });
+        }
+
+        return invoke("get_local_settings");
+      }
+
+      function saveLocalSettings(settings) {
+        if (!invoke) {
+          return Promise.resolve({
+            hostStateUrl: `http://127.0.0.1:${settings.port}/api/host-state`,
+            ...settings,
+          });
+        }
+
+        return invoke("save_local_settings", settings);
+      }
+
+      function resetPairingToken() {
+        if (!invoke) {
+          const token = `tappad-${Date.now().toString(16)}`;
+          return Promise.resolve({
+            hostStateUrl: localStorage.getItem(HOST_STATE_STORAGE_KEY) || DEFAULT_HOST_STATE_URL,
+            port: 8765,
+            token,
+            launchAtLogin: false,
+          });
+        }
+
+        return invoke("reset_pairing_token");
+      }
+
+      function getHostState(url) {
+        if (invoke) {
+          return invoke("load_host_state");
+        }
+
+        return fetch(url)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`Linux runtime returned ${response.status}`);
+            }
+            return response.json();
+          });
       }
 
       loadHostState(localStorage.getItem(HOST_STATE_STORAGE_KEY) || DEFAULT_HOST_STATE_URL);
