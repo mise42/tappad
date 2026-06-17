@@ -51,17 +51,17 @@ final class MacCommandRegistry: CommandRegistry, @unchecked Sendable {
             "screenshot": [
                 "sh",
                 "-c",
-                "mkdir -p \"$HOME/Movies/TapPad\" && screencapture -x \"$HOME/Movies/TapPad/screenshot-$(date +'%Y%m%d-%H%M%S').png\"",
+                "mkdir -p \"$HOME/Movies/TapPad\" && screencapture -x \"$HOME/Movies/TapPad/screenshot-$(date +'%Y%m%d-%H%M%S')-$(date +'%s%3N').png\"",
             ],
             "close_window": [
                 "osascript",
                 "-e",
-                "tell application \"System Events\" to key code 13 using {command down}",
+                "tell application \"System Events\" to keystroke \"w\" using {command down}",
             ],
             "app_launcher": [
-                "osascript",
-                "-e",
-                "tell application \"System Events\" to keystroke \" \" using {command down}",
+                "sh",
+                "-c",
+                "open -a Launchpad",
             ],
         ]
     }
