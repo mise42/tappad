@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "check:landing": "node scripts/check-landing-download-links.mjs"
+    "check:desktop-actions": "node scripts/check-desktop-actions.mjs",
+    "check:landing": "node scripts/check-landing-download-links.mjs",
+    "test": "npm run check:desktop-actions && npm run check:landing"
   }
 }

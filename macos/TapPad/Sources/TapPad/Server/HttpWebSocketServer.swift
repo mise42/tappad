@@ -158,9 +158,12 @@ final class HttpWebSocketServer: @unchecked Sendable {
         }
 
         let fileURL = staticRoot.appendingPathComponent(requestedPath)
-        guard let data = try? Data(contentsOf: fileURL) else {
+        guard var data = try? Data(contentsOf: fileURL) else {
             writeString(fd, "HTTP/1.1 404 Not Found\r\nContent-Length: 10\r\n\r\nNot found\n")
             return
+        }
+        if requestedPath == "index.html" {
+            data = renderMobileIndex(data)
         }
 
         writeString(
@@ -176,6 +179,81 @@ final class HttpWebSocketServer: @unchecked Sendable {
         )
         writeAll(fd, [UInt8](data))
     }
+
+    private func renderMobileIndex(_ data: Data) -> Data {
+        guard var html = String(data: data, encoding: .utf8) else {
+            return data
+        }
+
+        let script = "<script>window.__TAPPAD_ACTIONS__ = \(macActionCapabilitiesJSON());</script>"
+        html = html.replacingOccurrences(of: "</head>", with: "\(script)\n</head>")
+        return Data(html.utf8)
+    }
+}
+
+private func macActionCapabilitiesJSON() -> String {
+    let actions: [String: [String: String]] = [
+        "screenrecord.screen": [
+            "state": "hidden",
+        ],
+        "screenrecord.window": [
+            "state": "hidden",
+        ],
+        "screenrecord.screen.audio": [
+            "state": "hidden",
+        ],
+        "screenrecord.screen.webcam": [
+            "state": "hidden",
+        ],
+        "screenrecord.stop": [
+            "state": "hidden",
+        ],
+        "open_recordings_folder": [
+            "state": "supported",
+        ],
+        "screenshot": [
+            "state": "supported",
+        ],
+        "close_window": [
+            "state": "supported",
+        ],
+        "app_launcher": [
+            "state": "supported",
+        ],
+        "nightlight.toggle": [
+            "state": "hidden",
+        ],
+        "lock_screen": [
+            "state": "supported",
+        ],
+        "media.prev": [
+            "state": "supported",
+        ],
+        "media.play_pause": [
+            "state": "supported",
+        ],
+        "media.next": [
+            "state": "supported",
+        ],
+        "media.volume_down": [
+            "state": "supported",
+        ],
+        "media.mute": [
+            "state": "supported",
+        ],
+        "media.volume_up": [
+            "state": "supported",
+        ],
+    ]
+
+    guard
+        JSONSerialization.isValidJSONObject(actions),
+        let data = try? JSONSerialization.data(withJSONObject: actions, options: [.sortedKeys]),
+        let json = String(data: data, encoding: .utf8)
+    else {
+        return "{}"
+    }
+    return json
 }
 
 private struct HttpRequest {
