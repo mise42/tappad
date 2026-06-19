@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PACKAGE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_ROOT="$(cd "$PACKAGE_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$PACKAGE_DIR/.." && pwd)"
 DIST_DIR="$PACKAGE_DIR/.dist"
 APP_DIR="$DIST_DIR/TapPad.app"
 ZIP_PATH="$DIST_DIR/TapPad-mac-beta.zip"

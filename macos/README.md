@@ -5,7 +5,7 @@ Swift/AppKit backend for the TapPad mobile input surface.
 ## Run
 
 ```bash
-cd macos/TapPad
+cd macos
 swift run TapPad
 ```
 

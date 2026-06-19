@@ -44,11 +44,11 @@ private func discoverStaticRoot() -> URL {
     let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     let candidates = [
         cwd.appendingPathComponent("mobile"),
+        cwd.appendingPathComponent("../mobile"),
         cwd.appendingPathComponent("../../mobile"),
-        cwd.appendingPathComponent("../../../mobile"),
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
-            .appendingPathComponent("../../../../../../mobile"),
+            .appendingPathComponent("../../../mobile"),
     ]
 
     for candidate in candidates {

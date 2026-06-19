@@ -10,7 +10,7 @@ The shared mobile web UI lives in `mobile/`.
 macOS keeps its native AppKit Desktop Host Surface.
 
 ```bash
-cd ~/Work/personal/tappad/macos/TapPad
+cd ~/Work/personal/tappad/macos
 ./scripts/build_app.sh
 open .dist/TapPad.app
 ```
@@ -21,7 +21,7 @@ beta download flow.
 For development:
 
 ```bash
-cd ~/Work/personal/tappad/macos/TapPad
+cd ~/Work/personal/tappad/macos
 swift run TapPad
 ```
 
@@ -30,7 +30,7 @@ swift run TapPad
 Linux and Windows share one Tauri Desktop Host Surface and one Rust backend:
 
 ```bash
-cd ~/Work/personal/tappad/desktop/TapPad
+cd ~/Work/personal/tappad/desktop
 npm install
 npm run dev
 ```

@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 
 const files = {
   frontend: "mobile/index.html",
-  desktopActions: "desktop/TapPad/src-tauri/src/actions.rs",
-  macCommands: "macos/TapPad/Sources/TapPad/Commands/CommandRegistry.swift",
-  macServer: "macos/TapPad/Sources/TapPad/Server/HttpWebSocketServer.swift",
+  desktopActions: "desktop/src-tauri/src/actions.rs",
+  macCommands: "macos/Sources/TapPad/Commands/CommandRegistry.swift",
+  macServer: "macos/Sources/TapPad/Server/HttpWebSocketServer.swift",
 };
 
 const text = Object.fromEntries(

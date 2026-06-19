@@ -31,7 +31,7 @@ use crate::{
     settings::RuntimeSettings,
 };
 
-static MOBILE_ASSETS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../../mobile");
+static MOBILE_ASSETS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../mobile");
 static CLIENT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, serde::Deserialize)]
