@@ -116,43 +116,19 @@ impl InputDevice {
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 fn key_for_code(code: &str) -> Option<Key> {
+    if let Some(letter) = code.strip_prefix("Key").and_then(single_ascii_char) {
+        if letter.is_ascii_uppercase() {
+            return Some(Key::Unicode(letter.to_ascii_lowercase()));
+        }
+    }
+
+    if let Some(digit) = code.strip_prefix("Digit").and_then(single_ascii_char) {
+        if digit.is_ascii_digit() {
+            return Some(Key::Unicode(digit));
+        }
+    }
+
     match code {
-        "KeyA" => Some(Key::A),
-        "KeyB" => Some(Key::B),
-        "KeyC" => Some(Key::C),
-        "KeyD" => Some(Key::D),
-        "KeyE" => Some(Key::E),
-        "KeyF" => Some(Key::F),
-        "KeyG" => Some(Key::G),
-        "KeyH" => Some(Key::H),
-        "KeyI" => Some(Key::I),
-        "KeyJ" => Some(Key::J),
-        "KeyK" => Some(Key::K),
-        "KeyL" => Some(Key::L),
-        "KeyM" => Some(Key::M),
-        "KeyN" => Some(Key::N),
-        "KeyO" => Some(Key::O),
-        "KeyP" => Some(Key::P),
-        "KeyQ" => Some(Key::Q),
-        "KeyR" => Some(Key::R),
-        "KeyS" => Some(Key::S),
-        "KeyT" => Some(Key::T),
-        "KeyU" => Some(Key::U),
-        "KeyV" => Some(Key::V),
-        "KeyW" => Some(Key::W),
-        "KeyX" => Some(Key::X),
-        "KeyY" => Some(Key::Y),
-        "KeyZ" => Some(Key::Z),
-        "Digit0" => Some(Key::Num0),
-        "Digit1" => Some(Key::Num1),
-        "Digit2" => Some(Key::Num2),
-        "Digit3" => Some(Key::Num3),
-        "Digit4" => Some(Key::Num4),
-        "Digit5" => Some(Key::Num5),
-        "Digit6" => Some(Key::Num6),
-        "Digit7" => Some(Key::Num7),
-        "Digit8" => Some(Key::Num8),
-        "Digit9" => Some(Key::Num9),
         "Enter" => Some(Key::Return),
         "Escape" => Some(Key::Escape),
         "Backspace" => Some(Key::Backspace),
@@ -195,6 +171,17 @@ fn key_for_code(code: &str) -> Option<Key> {
         "VolumeMute" => Some(Key::VolumeMute),
         "VolumeUp" => Some(Key::VolumeUp),
         _ => None,
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn single_ascii_char(value: &str) -> Option<char> {
+    let mut chars = value.chars();
+    let ch = chars.next()?;
+    if chars.next().is_none() && ch.is_ascii() {
+        Some(ch)
+    } else {
+        None
     }
 }
 
