@@ -1,3 +1,5 @@
+use base64::{Engine, engine::general_purpose::STANDARD};
+use qrcode::{QrCode, render::svg};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -10,6 +12,8 @@ use crate::{
 pub struct PairingLinks {
     #[serde(rename = "preferredUrl")]
     pub preferred_url: String,
+    #[serde(rename = "qrCodeDataUrl")]
+    pub qr_code_data_url: String,
     #[serde(rename = "lanUrl")]
     pub lan_url: Option<String>,
     #[serde(rename = "localUrl")]
@@ -102,12 +106,28 @@ pub fn render_mobile_index(html: &str, actions: &BTreeMap<String, CapabilityStat
 fn pairing_links(settings: &RuntimeSettings, include_pairing_token: bool) -> PairingLinks {
     let local_url = settings.local_url(include_pairing_token);
     let lan_url = settings.lan_url(include_pairing_token);
+    let preferred_url = lan_url.clone().unwrap_or_else(|| local_url.clone());
     PairingLinks {
-        preferred_url: lan_url.clone().unwrap_or_else(|| local_url.clone()),
+        qr_code_data_url: qr_code_data_url(&preferred_url),
+        preferred_url,
         lan_url,
         local_url,
         token: include_pairing_token.then(|| settings.token.clone()),
     }
+}
+
+fn qr_code_data_url(text: &str) -> String {
+    let Ok(code) = QrCode::new(text.as_bytes()) else {
+        return String::new();
+    };
+    let image = code
+        .render::<svg::Color>()
+        .min_dimensions(260, 260)
+        .dark_color(svg::Color("#171917"))
+        .light_color(svg::Color("#ffffff"))
+        .build();
+
+    format!("data:image/svg+xml;base64,{}", STANDARD.encode(image))
 }
 
 fn readiness_groups() -> Vec<ReadinessGroup> {
@@ -231,6 +251,12 @@ mod tests {
         assert_eq!(
             state.pairing.preferred_url,
             "http://desktop:8765/?token=pair-token"
+        );
+        assert!(
+            state
+                .pairing
+                .qr_code_data_url
+                .starts_with("data:image/svg+xml;base64,")
         );
         assert!(state.server_status.token_enabled);
     }
