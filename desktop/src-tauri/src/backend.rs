@@ -217,14 +217,19 @@ async fn do_paste(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let text = truncate_to_char_boundary(text, PASTE_TEXT_LIMIT_BYTES);
 
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         use arboard::Clipboard;
 
         let mut clipboard = Clipboard::new()?;
         clipboard.set_text(text)?;
         tokio::time::sleep(std::time::Duration::from_millis(80)).await;
-        send_paste_shortcut(&input, "ControlLeft").await
+        let modifier = if cfg!(target_os = "macos") {
+            "MetaLeft"
+        } else {
+            "ControlLeft"
+        };
+        send_paste_shortcut(&input, modifier).await
     }
 
     #[cfg(target_os = "linux")]
@@ -273,15 +278,15 @@ async fn do_paste(
         send_paste_shortcut(&input, "ShiftLeft").await
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
         let _ = input;
         let _ = text;
-        Err("paste is implemented by the Linux and Windows Tauri host backends".into())
+        Err("paste is implemented by the Linux, macOS, and Windows Tauri host backends".into())
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 async fn send_paste_shortcut(
     input: &Arc<Mutex<InputDevice>>,
     modifier: &str,

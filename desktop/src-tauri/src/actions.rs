@@ -53,13 +53,19 @@ pub async fn run_named_action(
         run_windows_action(input, action).await
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(target_os = "macos")]
     {
         let _ = input;
-        Err(
-            format!("TapPad desktop actions are supported on Linux and Windows, not {action}")
-                .into(),
+        run_macos_action(action).await
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        let _ = input;
+        Err(format!(
+            "TapPad desktop actions are supported on Linux, macOS, and Windows, not {action}"
         )
+        .into())
     }
 }
 
@@ -113,12 +119,25 @@ fn capability_for_action(action: &str) -> CapabilityStatus {
         }
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(target_os = "macos")]
+    {
+        match action {
+            "screenrecord.screen"
+            | "screenrecord.window"
+            | "screenrecord.screen.audio"
+            | "screenrecord.screen.webcam"
+            | "screenrecord.stop"
+            | "nightlight.toggle" => capability("hidden", None),
+            _ => capability("supported", None),
+        }
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
         let _ = action;
         capability(
             "deferred",
-            Some("The unified Tauri host ships for Linux and Windows."),
+            Some("The unified Tauri host ships for Linux, macOS, and Windows."),
         )
     }
 }
@@ -169,6 +188,73 @@ fn linux_command(action: &str) -> Option<&'static str> {
         "media.volume_down" => Some("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),
         "media.mute" => Some("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),
         _ => None,
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn run_macos_action(action: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    match action {
+        "open_recordings_folder" => {
+            run_shell_command(r#"mkdir -p "$HOME/Movies/TapPad" && open "$HOME/Movies/TapPad""#)
+                .await
+        }
+        "screenshot" => {
+            run_shell_command(
+                r#"mkdir -p "$HOME/Movies/TapPad" && screencapture -x "$HOME/Movies/TapPad/screenshot-$(date +'%Y%m%d-%H%M%S')-$(uuidgen).png""#,
+            )
+            .await
+        }
+        "close_window" => {
+            run_shell_command(
+                r#"osascript -e 'tell application "System Events" to keystroke "w" using {command down}'"#,
+            )
+            .await
+        }
+        "app_launcher" => run_shell_command("open -a Launchpad").await,
+        "lock_screen" => run_shell_command("pmset displaysleepnow").await,
+        "media.prev" => {
+            run_shell_command(
+                r#"osascript -e 'tell application "System Events" to key code 123 using command down'"#,
+            )
+            .await
+        }
+        "media.play_pause" => {
+            run_shell_command(r#"osascript -e 'tell application "System Events" to key code 49'"#)
+                .await
+        }
+        "media.next" => {
+            run_shell_command(
+                r#"osascript -e 'tell application "System Events" to key code 124 using command down'"#,
+            )
+            .await
+        }
+        "media.volume_down" => {
+            run_shell_command(
+                r#"osascript -e 'set volume output volume ((output volume of (get volume settings)) - 5)'"#,
+            )
+            .await
+        }
+        "media.mute" => {
+            run_shell_command(
+                r#"osascript -e 'set volume output muted not (output muted of (get volume settings))'"#,
+            )
+            .await
+        }
+        "media.volume_up" => {
+            run_shell_command(
+                r#"osascript -e 'set volume output volume ((output volume of (get volume settings)) + 5)'"#,
+            )
+            .await
+        }
+        "screenrecord.screen"
+        | "screenrecord.window"
+        | "screenrecord.screen.audio"
+        | "screenrecord.screen.webcam"
+        | "screenrecord.stop"
+        | "nightlight.toggle" => {
+            Err(format!("macOS Tauri host does not expose {action} yet.").into())
+        }
+        _ => Err(format!("unknown or unsupported macOS desktop action: {action}").into()),
     }
 }
 
@@ -240,7 +326,7 @@ async fn open_recordings_folder() -> Result<(), Box<dyn std::error::Error + Send
     Ok(())
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 async fn run_shell_command(command: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let output = if cfg!(target_os = "windows") {
         tokio::process::Command::new("cmd")

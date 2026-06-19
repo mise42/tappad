@@ -1,6 +1,6 @@
 use std::io;
 
-#[cfg_attr(not(any(target_os = "linux", target_os = "windows")), allow(dead_code))]
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub fn chord_sequence<F>(code_names: &[&str], mut send_key: F) -> io::Result<()>
 where
     F: FnMut(&str, bool) -> io::Result<()>,
