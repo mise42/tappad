@@ -1,17 +1,17 @@
-name: Build Windows Backend
+name: Build Desktop Host
 
 on:
   workflow_dispatch:
   push:
     paths:
       - ".github/workflows/build-windows-backend.yml"
-      - "static/**"
-      - "windows/TapPad/**"
+      - "mobile/**"
+      - "desktop/TapPad/**"
   pull_request:
     paths:
       - ".github/workflows/build-windows-backend.yml"
-      - "static/**"
-      - "windows/TapPad/**"
+      - "mobile/**"
+      - "desktop/TapPad/**"
 
 jobs:
   build:
@@ -20,7 +20,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: windows/TapPad
+        working-directory: desktop/TapPad
 
     steps:
       - name: Checkout
@@ -39,7 +39,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: windows/TapPad/package-lock.json
+          cache-dependency-path: desktop/TapPad/package-lock.json
 
       - name: Install frontend tooling
         run: npm ci
@@ -50,8 +50,8 @@ jobs:
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tappad-windows-backend
+          name: tappad-desktop-host
           path: |
-            windows/TapPad/src-tauri/target/release/bundle/**/*.msi
-            windows/TapPad/src-tauri/target/release/bundle/**/*.exe
+            desktop/TapPad/src-tauri/target/release/bundle/**/*.msi
+            desktop/TapPad/src-tauri/target/release/bundle/**/*.exe
           if-no-files-found: error

@@ -41,11 +41,6 @@ enum PairingToken {
     private static let storageKey = "TapPadPairingToken"
 
     static func resolve() -> String {
-        if let token = ProcessInfo.processInfo.environment["TOUCHPAD_TOKEN"],
-           !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return token
-        }
-
         if let stored = UserDefaults.standard.string(forKey: storageKey),
            !stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return stored

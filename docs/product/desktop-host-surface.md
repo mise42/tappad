@@ -11,6 +11,7 @@ TapPad should feel like one product across macOS, Windows, and Linux even when e
 - macOS keeps a native host surface.
 - Windows and Linux may share a Tauri host surface.
 - Linux requires a GUI host surface rather than only a command-line runtime.
+- Linux launch-at-login and backend lifecycle should be owned by the Tauri host surface, not by a systemd service or fallback path.
 
 ## Minimum common contract
 

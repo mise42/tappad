@@ -20,10 +20,7 @@ The app also opens a pairing window with a QR code and tokenized link.
 
 ## Environment
 
-- `TOUCHPAD_HOST` — bind host, default `0.0.0.0`
-- `TOUCHPAD_PORT` — bind port, default `8765`
-- `TOUCHPAD_TOKEN` — optional WebSocket token; generated automatically when omitted
-- `TAPPAD_STATIC_ROOT` — optional path to the shared `static/` frontend
+- `TAPPAD_MOBILE_ROOT` — optional path to the shared `mobile/` frontend
 
 ## Current Scope
 
@@ -31,13 +28,13 @@ The app also opens a pairing window with a QR code and tokenized link.
 - Key presses and typed text use CoreGraphics keyboard events.
 - Paste uses AppKit `NSPasteboard`, then sends Command+V.
 - A pairing window shows a QR code, LAN URL, `.local` backup URL, and Accessibility status.
-- Raw `exec` is intentionally unsupported on macOS.
+- Raw shell-command messages are not part of the mobile protocol.
 - Media commands are a first small registry and may move to deeper native APIs later.
 - Screen recording is not implemented yet; use ScreenCaptureKit when this scope opens.
 
 ## Shape
 
-The mobile Web UI and JSON protocol stay shared with the Linux backend. macOS owns the native backend capabilities:
+The mobile Web UI and JSON protocol stay shared with the desktop host backend. macOS owns the native backend capabilities:
 
 - `Input/` — pointer, scroll, key, and typed text
 - `Clipboard/` — paste path

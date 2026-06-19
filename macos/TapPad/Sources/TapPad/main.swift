@@ -1,8 +1,8 @@
 import AppKit
 import Foundation
 
-let host = ProcessInfo.processInfo.environment["TOUCHPAD_HOST"] ?? "0.0.0.0"
-let port = UInt16(ProcessInfo.processInfo.environment["TOUCHPAD_PORT"] ?? "") ?? 8765
+let host = "0.0.0.0"
+let port = UInt16(8765)
 let token = PairingToken.resolve()
 let pairingInfo = PairingInfo(port: port, token: token)
 let staticRoot = discoverStaticRoot()
@@ -30,25 +30,25 @@ app.delegate = delegate
 app.run()
 
 private func discoverStaticRoot() -> URL {
-    if let bundled = Bundle.main.resourceURL?.appendingPathComponent("static") {
+    if let bundled = Bundle.main.resourceURL?.appendingPathComponent("mobile") {
         let index = bundled.appendingPathComponent("index.html")
         if FileManager.default.fileExists(atPath: index.path) {
             return bundled
         }
     }
 
-    if let explicit = ProcessInfo.processInfo.environment["TAPPAD_STATIC_ROOT"] {
+    if let explicit = ProcessInfo.processInfo.environment["TAPPAD_MOBILE_ROOT"] {
         return URL(fileURLWithPath: explicit)
     }
 
     let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     let candidates = [
-        cwd.appendingPathComponent("static"),
-        cwd.appendingPathComponent("../../static"),
-        cwd.appendingPathComponent("../../../static"),
+        cwd.appendingPathComponent("mobile"),
+        cwd.appendingPathComponent("../../mobile"),
+        cwd.appendingPathComponent("../../../mobile"),
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
-            .appendingPathComponent("../../../../../../static"),
+            .appendingPathComponent("../../../../../../mobile"),
     ]
 
     for candidate in candidates {
@@ -58,5 +58,5 @@ private func discoverStaticRoot() -> URL {
         }
     }
 
-    return cwd.appendingPathComponent("static")
+    return cwd.appendingPathComponent("mobile")
 }

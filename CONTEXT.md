@@ -50,12 +50,13 @@ There are **two distinct ways** text reaches the target window:
 
 These are not interchangeable. Both serve text transfer, but Type is for keyboard-like text entry; Paste is for clipboard-like text entry.
 
-## Command path
+## Desktop Action path
 
-There are **two ways** the frontend can trigger desktop actions:
+The frontend triggers desktop actions through named action ids:
 
 - **Cmd** — Sends an intentional desktop action name, such as `screenshot` or `media.play_pause`.
-- **Exec** — Sends a raw target-specific command as an escape hatch for ad-hoc automation.
+
+Raw target-specific shell-command messages are outside the product protocol.
 
 ## Modules
 

@@ -7,7 +7,6 @@ enum ClientMessage {
     case key(code: String, down: Bool)
     case text(value: String)
     case paste(value: String)
-    case exec(command: String)
     case cmd(action: String)
 }
 
@@ -57,8 +56,6 @@ enum ClientMessageDecoder {
             return .text(value: object["value"] as? String ?? "")
         case "paste":
             return .paste(value: object["value"] as? String ?? "")
-        case "exec":
-            return .exec(command: object["command"] as? String ?? "")
         case "cmd":
             return .cmd(action: object["action"] as? String ?? "")
         default:

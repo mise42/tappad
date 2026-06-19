@@ -27,7 +27,7 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$PACKAGE_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$BIN_DIR/TapPad" "$MACOS_DIR/TapPad"
 chmod +x "$MACOS_DIR/TapPad"
-cp -R "$REPO_ROOT/static" "$RESOURCES_DIR/static"
+cp -R "$REPO_ROOT/mobile" "$RESOURCES_DIR/mobile"
 
 codesign --force --deep --sign - "$APP_DIR" >/dev/null
 xattr -dr com.apple.quarantine "$APP_DIR" 2>/dev/null || true

@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TapPad Desktop Host</title>
+    <style>
+      :root {
+        --bg: #f6f7f4;
+        --panel: #ffffff;
+        --ink: #171917;
+        --muted: #5d665f;
+        --line: #d8ded8;
+        --accent: #176b4d;
+        --accent-ink: #ffffff;
+        --warn: #8a5a00;
+        --danger: #a03324;
+        --font: "Inter", "Avenir Next", "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        background: var(--bg);
+        font-family: var(--font);
+      }
+
+      main {
+        width: min(1120px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 28px 0 40px;
+      }
+
+      header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 18px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin-bottom: 6px;
+        font-size: 34px;
+        line-height: 1.05;
+      }
+
+      h2 {
+        margin-bottom: 12px;
+        font-size: 17px;
+      }
+
+      h3 {
+        margin-bottom: 10px;
+        font-size: 14px;
+      }
+
+      p {
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      }
+
+      .panel {
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 18px;
+      }
+
+      .wide {
+        grid-column: 1 / -1;
+      }
+
+      dl,
+      ul {
+        margin: 0;
+        padding: 0;
+      }
+
+      dl {
+        display: grid;
+        gap: 10px;
+      }
+
+      dt {
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      dd {
+        margin: 3px 0 0;
+        word-break: break-word;
+      }
+
+      li {
+        list-style: none;
+      }
+
+      label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      input {
+        width: min(520px, 100%);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px 12px;
+        font: inherit;
+      }
+
+      input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        padding: 0;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      button,
+      a.button {
+        border: 0;
+        border-radius: 6px;
+        padding: 10px 12px;
+        font: inherit;
+        color: var(--accent-ink);
+        background: var(--accent);
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      button.secondary,
+      a.secondary {
+        color: var(--ink);
+        background: #e7ece8;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .line {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 8px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .line:first-child {
+        border-top: 0;
+      }
+
+      .badge {
+        flex: none;
+        border-radius: 999px;
+        padding: 4px 8px;
+        font-size: 11px;
+        color: var(--accent);
+        background: #e3f1ec;
+        text-transform: uppercase;
+      }
+
+      .badge[data-state="deferred"],
+      .badge[data-state="manual"],
+      .badge[data-state="degraded"],
+      .badge[data-state="downgraded"],
+      .badge[data-state="disabled"] {
+        color: var(--warn);
+        background: #f4ebd6;
+      }
+
+      .badge[data-state="stopped"],
+      .badge[data-state="error"] {
+        color: var(--danger);
+        background: #f5ded9;
+      }
+
+      .note {
+        margin: 6px 0 0;
+        font-size: 13px;
+      }
+
+      .action-grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      }
+
+      .action-item {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .action-item strong {
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      #statusText {
+        min-height: 20px;
+        margin-bottom: 0;
+        text-align: right;
+      }
+
+      @media (max-width: 720px) {
+        header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        #statusText {
+          text-align: left;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>TapPad Desktop Host</h1>
+          <p>Mobile Input Surface pairing, backend status, readiness, and local settings.</p>
+        </div>
+        <p id="statusText"></p>
+      </header>
+
+      <section class="grid">
+        <article class="panel" id="pairing"></article>
+        <article class="panel" id="server"></article>
+        <article class="panel" id="settings"></article>
+        <article class="panel wide" id="readiness"></article>
+        <article class="panel wide" id="actions"></article>
+      </section>
+    </main>
+
+    <script>
+      const invoke = window.__TAURI__?.core?.invoke;
+      let currentState = null;
+
+      function badge(state) {
+        return `<span class="badge" data-state="${state}">${state}</span>`;
+      }
+
+      function line(label, state, note) {
+        return `<li class="line"><div><strong>${label}</strong>${note ? `<p class="note">${note}</p>` : ""}</div>${badge(state)}</li>`;
+      }
+
+      function setStatus(message, kind = "note") {
+        const status = document.getElementById("statusText");
+        status.textContent = message;
+        status.dataset.kind = kind;
+      }
+
+      async function copyText(value) {
+        await navigator.clipboard.writeText(value);
+        setStatus("Copied");
+      }
+
+      function renderPairing(state) {
+        const pairing = state.pairing;
+        document.getElementById("pairing").innerHTML = `
+          <h2>Pairing</h2>
+          <dl>
+            <div><dt>Preferred link</dt><dd>${pairing.preferredUrl}</dd></div>
+            <div><dt>Fallback link</dt><dd>${pairing.localUrl}</dd></div>
+            <div><dt>Pairing token</dt><dd>${pairing.token || "Saved locally"}</dd></div>
+          </dl>
+          <div class="actions">
+            <button id="copyLink" type="button">Copy link</button>
+            <a class="button secondary" href="${pairing.preferredUrl}" target="_blank" rel="noreferrer">Open Mobile Input Surface</a>
+          </div>
+        `;
+        document.getElementById("copyLink").addEventListener("click", () => copyText(pairing.preferredUrl));
+      }
+
+      function renderServer(state) {
+        const server = state.serverStatus;
+        document.getElementById("server").innerHTML = `
+          <h2>Server Status</h2>
+          <dl>
+            <div><dt>Running</dt><dd>${server.running ? "Yes" : "No"}</dd></div>
+            <div><dt>Address</dt><dd>${server.host}:${server.port}</dd></div>
+            <div><dt>Bind address</dt><dd>${server.bindAddress}</dd></div>
+            <div><dt>Token gate</dt><dd>${server.tokenEnabled ? "Enabled" : "Disabled"}</dd></div>
+          </dl>
+        `;
+      }
+
+      function renderSettings(state) {
+        const settings = state.settings;
+        document.getElementById("settings").innerHTML = `
+          <h2>Settings</h2>
+          <form id="settingsForm">
+            <dl>
+              <div>
+                <dt>Port</dt>
+                <dd><input id="settingsPort" inputmode="numeric" value="${settings.port}" /></dd>
+              </div>
+              <div>
+                <dt>Pairing token</dt>
+                <dd><input id="settingsToken" value="${state.pairing.token || ""}" required /></dd>
+              </div>
+              <div>
+                <dt>Launch at login</dt>
+                <dd><label><input id="settingsLaunch" type="checkbox" ${settings.launchAtLogin.state === "enabled" ? "checked" : ""} /> Start TapPad with this desktop session</label></dd>
+              </div>
+            </dl>
+            <div class="actions">
+              <button type="submit">Save</button>
+              <button class="secondary" type="button" id="resetToken">Reset token</button>
+            </div>
+            <p class="note">${settings.launchAtLogin.note || ""}</p>
+          </form>
+        `;
+
+        document.getElementById("settingsForm").addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const port = Number.parseInt(document.getElementById("settingsPort").value, 10);
+          const token = document.getElementById("settingsToken").value.trim();
+          const launchAtLogin = document.getElementById("settingsLaunch").checked;
+          await saveSettings({ port, token, launchAtLogin });
+        });
+
+        document.getElementById("resetToken").addEventListener("click", resetToken);
+      }
+
+      function renderReadiness(state) {
+        document.getElementById("readiness").innerHTML = `
+          <h2>Readiness</h2>
+          ${state.readiness
+            .map(
+              (group) => `
+                <section>
+                  <h3>${group.title}</h3>
+                  <ul>${group.items.map((item) => line(item.label, item.state, item.note)).join("")}</ul>
+                </section>
+              `,
+            )
+            .join("")}
+        `;
+      }
+
+      function renderActions(state) {
+        const visibleActions = Object.entries(state.actions).filter(([, value]) => value.state !== "hidden");
+        document.getElementById("actions").innerHTML = `
+          <h2>Desktop Actions</h2>
+          <div class="action-grid">
+            ${visibleActions
+              .map(
+                ([name, value]) => `
+                  <article class="action-item">
+                    <strong>${name}</strong>
+                    ${badge(value.state)}
+                    ${value.note ? `<p class="note">${value.note}</p>` : ""}
+                  </article>
+                `,
+              )
+              .join("")}
+          </div>
+        `;
+      }
+
+      function render(state) {
+        currentState = state;
+        renderPairing(state);
+        renderServer(state);
+        renderSettings(state);
+        renderReadiness(state);
+        renderActions(state);
+      }
+
+      async function refresh() {
+        if (!invoke) {
+          throw new Error("Tauri invoke API is unavailable.");
+        }
+        render(await invoke("host_state"));
+      }
+
+      async function saveSettings(settings) {
+        try {
+          setStatus("Saving...");
+          render(await invoke("save_settings", settings));
+          setStatus("Saved and restarted");
+        } catch (error) {
+          setStatus(String(error), "error");
+          render(currentState);
+        }
+      }
+
+      async function resetToken() {
+        try {
+          setStatus("Resetting...");
+          render(await invoke("reset_pairing_token"));
+          setStatus("Token reset and backend restarted");
+        } catch (error) {
+          setStatus(String(error), "error");
+        }
+      }
+
+      refresh().catch((error) => {
+        document.querySelector(".grid").innerHTML = `
+          <article class="panel wide">
+            <h2>TapPad Desktop Host unavailable</h2>
+            <p>${String(error)}</p>
+          </article>
+        `;
+      });
+    </script>
+  </body>
+</html>

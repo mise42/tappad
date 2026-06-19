@@ -36,8 +36,6 @@ final class ProtocolRouter: @unchecked Sendable {
             clipboard.paste(value)
         case let .cmd(action):
             commands.run(action: action)
-        case let .exec(command):
-            print("raw exec is intentionally unsupported on macOS backend: \(command)")
         }
     }
 
