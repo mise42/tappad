@@ -5,7 +5,7 @@ a pointer, keyboard, paste bridge, and Desktop Action pad for a nearby desktop.
 
 The shared mobile web UI lives in `mobile/`.
 
-## macOS Beta
+## macOS App
 
 macOS keeps its native AppKit Desktop Host Surface.
 
@@ -15,8 +15,8 @@ cd ~/Work/personal/tappad/macos
 open .dist/TapPad.app
 ```
 
-The packaging script also creates `.dist/TapPad-mac-beta.zip` for the public
-beta download flow.
+The packaging script also creates `.dist/TapPad-mac.zip` for the public
+download flow.
 
 For development:
 
