@@ -6,16 +6,18 @@
     <title>TapPad Desktop Host</title>
     <style>
       :root {
-        --bg: #f6f7f4;
+        --bg: #f5f5f7;
         --panel: #ffffff;
-        --ink: #171917;
-        --muted: #5d665f;
-        --line: #d8ded8;
-        --accent: #176b4d;
+        --ink: #1d1d1f;
+        --muted: #6e6e73;
+        --line: #d8d8dc;
+        --soft-line: #ededf0;
+        --accent: #0071e3;
         --accent-ink: #ffffff;
-        --warn: #8a5a00;
-        --danger: #a03324;
-        --font: "Inter", "Avenir Next", "Segoe UI", sans-serif;
+        --secondary: #ebebef;
+        --warn: #9a6a00;
+        --danger: #b3261e;
+        --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
       }
 
       * {
@@ -31,17 +33,9 @@
       }
 
       main {
-        width: min(1120px, calc(100vw - 32px));
+        width: min(460px, calc(100vw - 32px));
         margin: 0 auto;
-        padding: 28px 0 40px;
-      }
-
-      header {
-        display: flex;
-        align-items: flex-end;
-        justify-content: space-between;
-        gap: 18px;
-        margin-bottom: 18px;
+        padding: 32px 0;
       }
 
       h1,
@@ -52,19 +46,22 @@
       }
 
       h1 {
-        margin-bottom: 6px;
-        font-size: 34px;
-        line-height: 1.05;
+        margin-bottom: 8px;
+        font-size: 22px;
+        font-weight: 650;
+        line-height: 1.18;
       }
 
       h2 {
-        margin-bottom: 12px;
-        font-size: 17px;
+        margin-bottom: 14px;
+        font-size: 15px;
+        font-weight: 650;
       }
 
       h3 {
-        margin-bottom: 10px;
-        font-size: 14px;
+        margin-bottom: 8px;
+        font-size: 13px;
+        font-weight: 650;
       }
 
       p {
@@ -72,22 +69,20 @@
         line-height: 1.45;
       }
 
-      .grid {
-        display: grid;
-        gap: 14px;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      }
-
-      .panel {
-        min-width: 0;
+      .pairing-window {
         border: 1px solid var(--line);
-        border-radius: 8px;
+        border-radius: 12px;
         background: var(--panel);
-        padding: 18px;
+        padding: 28px;
+        text-align: center;
+        box-shadow: 0 18px 45px rgb(0 0 0 / 8%);
       }
 
-      .wide {
-        grid-column: 1 / -1;
+      .pairing-window > p {
+        max-width: 430px;
+        margin-right: auto;
+        margin-left: auto;
+        font-size: 13px;
       }
 
       dl,
@@ -98,12 +93,12 @@
 
       dl {
         display: grid;
-        gap: 10px;
+        gap: 12px;
       }
 
       dt {
         color: var(--muted);
-        font-size: 12px;
+        font-size: 11px;
         text-transform: uppercase;
       }
 
@@ -123,10 +118,10 @@
       }
 
       input {
-        width: min(520px, 100%);
+        width: 100%;
         border: 1px solid var(--line);
         border-radius: 6px;
-        padding: 10px 12px;
+        padding: 8px 10px;
         font: inherit;
       }
 
@@ -139,16 +134,18 @@
       .actions {
         display: flex;
         flex-wrap: wrap;
+        justify-content: center;
         gap: 8px;
-        margin-top: 14px;
+        margin-top: 16px;
       }
 
       button,
       a.button {
         border: 0;
         border-radius: 6px;
-        padding: 10px 12px;
+        padding: 7px 12px;
         font: inherit;
+        font-size: 13px;
         color: var(--accent-ink);
         background: var(--accent);
         text-decoration: none;
@@ -158,7 +155,7 @@
       button.secondary,
       a.secondary {
         color: var(--ink);
-        background: #e7ece8;
+        background: var(--secondary);
       }
 
       button:disabled {
@@ -172,7 +169,7 @@
         align-items: flex-start;
         gap: 10px;
         padding: 8px 0;
-        border-top: 1px solid var(--line);
+        border-top: 1px solid var(--soft-line);
       }
 
       .line:first-child {
@@ -184,8 +181,8 @@
         border-radius: 999px;
         padding: 4px 8px;
         font-size: 11px;
-        color: var(--accent);
-        background: #e3f1ec;
+        color: #0d6b38;
+        background: #e6f4ea;
         text-transform: uppercase;
       }
 
@@ -209,16 +206,100 @@
         font-size: 13px;
       }
 
+      .qr-code {
+        display: grid;
+        place-items: center;
+        width: 282px;
+        height: 282px;
+        margin: 20px auto 14px;
+        border: 1px solid var(--soft-line);
+        border-radius: 10px;
+        background: #fff;
+      }
+
+      .qr-code img {
+        width: 260px;
+        height: 260px;
+      }
+
+      .qr-unavailable {
+        max-width: 210px;
+        color: var(--danger);
+        font-size: 13px;
+      }
+
+      .pairing-link,
+      .backup-link {
+        margin: 0 auto;
+        max-width: 100%;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+
+      .backup-link {
+        margin-top: 8px;
+        color: var(--muted);
+      }
+
+      .server-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        margin-top: 16px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .server-pill::before {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #28a745;
+        content: "";
+      }
+
+      .server-pill[data-running="false"]::before {
+        background: var(--danger);
+      }
+
+      .advanced {
+        margin-top: 14px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgb(255 255 255 / 70%);
+      }
+
+      .advanced summary {
+        padding: 13px 16px;
+        color: var(--ink);
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .advanced-content {
+        display: grid;
+        gap: 18px;
+        padding: 0 16px 16px;
+      }
+
+      .advanced-section {
+        min-width: 0;
+        border-top: 1px solid var(--soft-line);
+        padding-top: 16px;
+      }
+
       .action-grid {
         display: grid;
         gap: 10px;
-        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       }
 
       .action-item {
-        border: 1px solid var(--line);
+        border: 1px solid var(--soft-line);
         border-radius: 8px;
-        padding: 14px;
+        padding: 12px;
       }
 
       .action-item strong {
@@ -227,52 +308,78 @@
       }
 
       #statusText {
-        min-height: 20px;
-        margin-bottom: 0;
-        text-align: right;
+        min-height: 18px;
+        margin: 12px 0 0;
+        font-size: 13px;
+        text-align: center;
+      }
+
+      #statusText[data-kind="error"] {
+        color: var(--danger);
       }
 
       @media (max-width: 720px) {
-        header {
-          align-items: flex-start;
+        main {
+          padding: 16px 0;
+        }
+
+        .pairing-window {
+          padding: 22px 18px;
+        }
+
+        .qr-code {
+          width: min(282px, 100%);
+        }
+
+        .actions {
           flex-direction: column;
         }
 
-        #statusText {
-          text-align: left;
+        button,
+        a.button {
+          width: 100%;
         }
       }
     </style>
   </head>
   <body>
     <main>
-      <header>
-        <div>
-          <h1>TapPad Desktop Host</h1>
-          <p>Mobile Input Surface pairing, backend status, readiness, and local settings.</p>
+      <section class="pairing-window" id="pairing"></section>
+      <details class="advanced">
+        <summary>Advanced</summary>
+        <div class="advanced-content">
+          <section class="advanced-section" id="server"></section>
+          <section class="advanced-section" id="settings"></section>
+          <section class="advanced-section" id="readiness"></section>
+          <section class="advanced-section" id="actions"></section>
         </div>
-        <p id="statusText"></p>
-      </header>
-
-      <section class="grid">
-        <article class="panel" id="pairing"></article>
-        <article class="panel" id="server"></article>
-        <article class="panel" id="settings"></article>
-        <article class="panel wide" id="readiness"></article>
-        <article class="panel wide" id="actions"></article>
-      </section>
+      </details>
+      <p id="statusText" role="status"></p>
     </main>
 
     <script>
       const invoke = window.__TAURI__?.core?.invoke;
       let currentState = null;
 
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, (char) => {
+          const entities = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+          };
+          return entities[char];
+        });
+      }
+
       function badge(state) {
-        return `<span class="badge" data-state="${state}">${state}</span>`;
+        return `<span class="badge" data-state="${escapeHtml(state)}">${escapeHtml(state)}</span>`;
       }
 
       function line(label, state, note) {
-        return `<li class="line"><div><strong>${label}</strong>${note ? `<p class="note">${note}</p>` : ""}</div>${badge(state)}</li>`;
+        return `<li class="line"><div><strong>${escapeHtml(label)}</strong>${note ? `<p class="note">${escapeHtml(note)}</p>` : ""}</div>${badge(state)}</li>`;
       }
 
       function setStatus(message, kind = "note") {
@@ -288,17 +395,25 @@
 
       function renderPairing(state) {
         const pairing = state.pairing;
+        const server = state.serverStatus;
+        const qr = pairing.qrCodeDataUrl
+          ? `<img alt="Pairing QR code" src="${escapeHtml(pairing.qrCodeDataUrl)}" />`
+          : `<p class="qr-unavailable">Pairing code unavailable. Copy the link below instead.</p>`;
+        const backup =
+          pairing.localUrl && pairing.localUrl !== pairing.preferredUrl
+            ? `<p class="backup-link">Backup: ${escapeHtml(pairing.localUrl)}</p>`
+            : "";
         document.getElementById("pairing").innerHTML = `
-          <h2>Pairing</h2>
-          <dl>
-            <div><dt>Preferred link</dt><dd>${pairing.preferredUrl}</dd></div>
-            <div><dt>Fallback link</dt><dd>${pairing.localUrl}</dd></div>
-            <div><dt>Pairing token</dt><dd>${pairing.token || "Saved locally"}</dd></div>
-          </dl>
+          <h1>Scan to control this computer</h1>
+          <p>Open TapPad from a phone, tablet, or browser on the same local network.</p>
+          <div class="qr-code">${qr}</div>
+          <p class="pairing-link">${escapeHtml(pairing.preferredUrl)}</p>
+          ${backup}
           <div class="actions">
-            <button id="copyLink" type="button">Copy link</button>
-            <a class="button secondary" href="${pairing.preferredUrl}" target="_blank" rel="noreferrer">Open Mobile Input Surface</a>
+            <button id="copyLink" type="button">Copy Link</button>
+            <a class="button secondary" href="${escapeHtml(pairing.preferredUrl)}" target="_blank" rel="noreferrer">Open Locally</a>
           </div>
+          <div class="server-pill" data-running="${server.running}">Server ${server.running ? "running" : "stopped"} on ${escapeHtml(server.host)}:${escapeHtml(server.port)}</div>
         `;
         document.getElementById("copyLink").addEventListener("click", () => copyText(pairing.preferredUrl));
       }
@@ -309,8 +424,8 @@
           <h2>Server Status</h2>
           <dl>
             <div><dt>Running</dt><dd>${server.running ? "Yes" : "No"}</dd></div>
-            <div><dt>Address</dt><dd>${server.host}:${server.port}</dd></div>
-            <div><dt>Bind address</dt><dd>${server.bindAddress}</dd></div>
+            <div><dt>Address</dt><dd>${escapeHtml(server.host)}:${escapeHtml(server.port)}</dd></div>
+            <div><dt>Bind address</dt><dd>${escapeHtml(server.bindAddress)}</dd></div>
             <div><dt>Token gate</dt><dd>${server.tokenEnabled ? "Enabled" : "Disabled"}</dd></div>
           </dl>
         `;
@@ -324,11 +439,11 @@
             <dl>
               <div>
                 <dt>Port</dt>
-                <dd><input id="settingsPort" inputmode="numeric" value="${settings.port}" /></dd>
+                <dd><input id="settingsPort" inputmode="numeric" value="${escapeHtml(settings.port)}" /></dd>
               </div>
               <div>
                 <dt>Pairing token</dt>
-                <dd><input id="settingsToken" value="${state.pairing.token || ""}" required /></dd>
+                <dd><input id="settingsToken" value="${escapeHtml(state.pairing.token || "")}" required /></dd>
               </div>
               <div>
                 <dt>Launch at login</dt>
@@ -337,9 +452,9 @@
             </dl>
             <div class="actions">
               <button type="submit">Save</button>
-              <button class="secondary" type="button" id="resetToken">Reset token</button>
+              <button class="secondary" type="button" id="resetToken">Reset Token</button>
             </div>
-            <p class="note">${settings.launchAtLogin.note || ""}</p>
+            <p class="note">${escapeHtml(settings.launchAtLogin.note || "")}</p>
           </form>
         `;
 
@@ -379,9 +494,9 @@
               .map(
                 ([name, value]) => `
                   <article class="action-item">
-                    <strong>${name}</strong>
+                    <strong>${escapeHtml(name)}</strong>
                     ${badge(value.state)}
-                    ${value.note ? `<p class="note">${value.note}</p>` : ""}
+                    ${value.note ? `<p class="note">${escapeHtml(value.note)}</p>` : ""}
                   </article>
                 `,
               )
@@ -428,11 +543,11 @@
       }
 
       refresh().catch((error) => {
-        document.querySelector(".grid").innerHTML = `
-          <article class="panel wide">
+        document.querySelector("main").innerHTML = `
+          <section class="pairing-window">
             <h2>TapPad Desktop Host unavailable</h2>
-            <p>${String(error)}</p>
-          </article>
+            <p>${escapeHtml(String(error))}</p>
+          </section>
         `;
       });
     </script>
