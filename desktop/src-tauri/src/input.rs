@@ -21,7 +21,7 @@ impl InputDevice {
         #[cfg(target_os = "windows")]
         let _ = enigo::set_dpi_awareness();
 
-        let enigo = Enigo::new(&Settings::default()).map_err(to_io_error)?;
+        let enigo = Enigo::new(&platform_settings()).map_err(to_io_error)?;
         Ok(Self { enigo })
     }
 
@@ -78,6 +78,16 @@ impl InputDevice {
     pub fn chord(&mut self, code_names: &[&str]) -> io::Result<()> {
         chord_sequence(code_names, |code_name, down| self.key(code_name, down))
     }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn platform_settings() -> Settings {
+    let mut settings = Settings::default();
+    #[cfg(target_os = "windows")]
+    {
+        settings.windows_subject_to_mouse_speed_and_acceleration_level = true;
+    }
+    settings
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
