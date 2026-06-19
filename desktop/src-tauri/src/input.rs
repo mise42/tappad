@@ -1,21 +1,21 @@
 use std::io;
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use enigo::{
     Axis, Button, Coordinate,
     Direction::{Click, Press, Release},
     Enigo, Key, Keyboard, Mouse, Settings,
 };
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use crate::input_chord::chord_sequence;
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub struct InputDevice {
     enigo: Enigo,
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 impl InputDevice {
     pub fn new() -> io::Result<Self> {
         #[cfg(target_os = "windows")]
@@ -70,30 +70,37 @@ impl InputDevice {
         self.enigo.text(text).map_err(to_io_error)
     }
 
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     pub fn tap(&mut self, code_name: &str) -> io::Result<()> {
         self.key(code_name, true)?;
         self.key(code_name, false)
     }
 
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     pub fn chord(&mut self, code_names: &[&str]) -> io::Result<()> {
         chord_sequence(code_names, |code_name, down| self.key(code_name, down))
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn platform_settings() -> Settings {
-    let mut settings = Settings::default();
+    #[cfg(not(target_os = "windows"))]
+    {
+        Settings::default()
+    }
+
     #[cfg(target_os = "windows")]
     {
+        let mut settings = Settings::default();
         settings.windows_subject_to_mouse_speed_and_acceleration_level = true;
+        settings
     }
-    settings
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 pub struct InputDevice;
 
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 impl InputDevice {
     pub fn new() -> io::Result<Self> {
         Ok(Self)
@@ -124,7 +131,7 @@ impl InputDevice {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn key_for_code(code: &str) -> Option<Key> {
     if let Some(letter) = code.strip_prefix("Key").and_then(single_ascii_char) {
         if letter.is_ascii_uppercase() {
@@ -145,6 +152,7 @@ fn key_for_code(code: &str) -> Option<Key> {
         "Tab" => Some(Key::Tab),
         "Space" => Some(Key::Space),
         "Delete" => Some(Key::Delete),
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         "Insert" => Some(Key::Insert),
         "Home" => Some(Key::Home),
         "End" => Some(Key::End),
@@ -161,6 +169,7 @@ fn key_for_code(code: &str) -> Option<Key> {
         "AltLeft" | "AltRight" => Some(Key::Alt),
         "MetaLeft" | "MetaRight" => Some(Key::Meta),
         "CapsLock" => Some(Key::CapsLock),
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         "PrintScreen" => Some(Key::PrintScr),
         "F1" => Some(Key::F1),
         "F2" => Some(Key::F2),
@@ -184,7 +193,7 @@ fn key_for_code(code: &str) -> Option<Key> {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn single_ascii_char(value: &str) -> Option<char> {
     let mut chars = value.chars();
     let ch = chars.next()?;
@@ -195,7 +204,7 @@ fn single_ascii_char(value: &str) -> Option<char> {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn to_io_error(error: impl std::fmt::Debug) -> io::Error {
     io::Error::other(format!("{error:?}"))
 }

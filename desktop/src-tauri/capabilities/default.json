@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default desktop capability for the TapPad Linux and Windows desktop host surface.",
+  "description": "Default desktop capability for the TapPad Linux, macOS, and Windows desktop host surface.",
   "windows": ["main"],
   "permissions": ["core:default"]
 }

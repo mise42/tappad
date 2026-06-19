@@ -205,16 +205,44 @@ fn readiness_groups() -> Vec<ReadinessGroup> {
         ]
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(target_os = "macos")]
+    {
+        vec![
+            ReadinessGroup {
+                title: "Core input readiness",
+                items: vec![
+                    readiness("Pointer", "ready", None),
+                    readiness("Keyboard", "ready", None),
+                    readiness("Text transfer", "ready", None),
+                    readiness("Paste", "ready", None),
+                ],
+            },
+            ReadinessGroup {
+                title: "Action readiness",
+                items: vec![
+                    readiness("Screenshot", "ready", None),
+                    readiness(
+                        "Recording",
+                        "deferred",
+                        Some("ScreenCaptureKit-backed recording is not part of this adapter yet."),
+                    ),
+                    readiness("Window control", "ready", None),
+                    readiness("Application launcher", "ready", None),
+                    readiness("Lock screen", "ready", None),
+                    readiness("Media control", "ready", None),
+                ],
+            },
+        ]
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
         vec![ReadinessGroup {
             title: "Desktop host readiness",
             items: vec![readiness(
                 "Unified Tauri host",
                 "deferred",
-                Some(
-                    "This host surface targets Linux and Windows; macOS keeps the native host surface.",
-                ),
+                Some("This host surface targets Linux, macOS, and Windows."),
             )],
         }]
     }

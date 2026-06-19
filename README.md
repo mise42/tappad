@@ -25,9 +25,12 @@ cd ~/Work/personal/tappad/macos
 swift run TapPad
 ```
 
-## Linux And Windows Desktop Host
+## Tauri Desktop Host
 
-Linux and Windows share one Tauri Desktop Host Surface and one Rust backend:
+Linux, macOS, and Windows share one Tauri Desktop Host Surface and one Rust
+backend. macOS still keeps the native AppKit host above as the primary
+commercial app path; the Tauri macOS target provides the same baseline host
+adapter for packaging and parity work.
 
 ```bash
 cd ~/Work/personal/tappad/desktop
