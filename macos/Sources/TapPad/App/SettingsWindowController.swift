@@ -46,7 +46,7 @@ final class SettingsWindowController: NSWindowController {
         stack.spacing = 18
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let header = NSTextField(labelWithString: "TapPad Beta")
+        let header = NSTextField(labelWithString: "TapPad")
         header.font = .systemFont(ofSize: 22, weight: .semibold)
 
         let summary = NSTextField(labelWithString: "Free while the product experience is being validated.")
