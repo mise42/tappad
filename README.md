@@ -1,15 +1,16 @@
 # TapPad
 
-TapPad is a browser-based mobile input surface. It serves a small mobile web UI
-that can turn a phone or tablet into a pointer, keyboard, and paste bridge.
+TapPad is a browser-based Mobile Input Surface. It turns a phone or tablet into
+a pointer, keyboard, paste bridge, and Desktop Action pad for a nearby desktop.
 
-The current macOS backend is a native AppKit app. The Linux/Omarchy backend is a
-Rust server that sends input through `uinput`.
+The shared mobile web UI lives in `mobile/`.
 
-## Mac beta setup
+## macOS Beta
+
+macOS keeps its native AppKit Desktop Host Surface.
 
 ```bash
-cd ~/Work/personal/tappad/macos/TapPad
+cd ~/Work/personal/tappad/macos
 ./scripts/build_app.sh
 open .dist/TapPad.app
 ```
@@ -17,58 +18,33 @@ open .dist/TapPad.app
 The packaging script also creates `.dist/TapPad-mac-beta.zip` for the public
 beta download flow.
 
-TapPad runs as a menu bar app. Use the menu to open Settings, show the pairing
-QR code, copy the pairing link, or check Accessibility permission.
-
 For development:
 
 ```bash
-cd ~/Work/personal/tappad/macos/TapPad
+cd ~/Work/personal/tappad/macos
 swift run TapPad
 ```
 
-## Linux / Omarchy
+## Linux And Windows Desktop Host
+
+Linux and Windows share one Tauri Desktop Host Surface and one Rust backend:
 
 ```bash
-cd ~/Work/personal/tappad
-cargo run --release
-```
-
-For a shared Tailnet or LAN, set an explicit token:
-
-```bash
-TOUCHPAD_TOKEN='change-me' cargo run --release
-```
-
-Then open:
-
-```text
-http://100.113.201.90:8765/?token=change-me
-```
-
-The Linux backend exposes its Desktop Host Surface state at:
-
-```text
-http://100.113.201.90:8765/api/host-state
-```
-
-The response includes pairing links, server status, readiness groups, local
-settings summary, and the Linux/Omarchy action capability manifest. Screen
-recordings are written to `~/Videos/TapPad`, and `open_recordings_folder` opens
-that folder.
-
-The Linux Tauri host surface reads that local runtime state and renders Pairing,
-Server Status, Readiness, Settings, and Action Parity:
-
-```bash
-cd ~/Work/personal/tappad/linux/TapPad
+cd ~/Work/personal/tappad/desktop
 npm install
 npm run dev
 ```
 
-Keep the Rust runtime running before opening the Tauri host surface. Local
-settings still come from `TOUCHPAD_HOST`, `TOUCHPAD_PORT`, and `TOUCHPAD_TOKEN`
-when starting the runtime.
+The Tauri app owns the backend lifecycle, pairing token, local settings,
+launch-at-login preference, and the Desktop Host Surface. Settings are stored in
+the Tauri app local data directory. Saving the port or token hot-restarts the
+backend only after the new listener binds successfully.
+
+The local backend serves:
+
+- Mobile Input Surface: `http://<host>:<port>/?token=<pairing-token>`
+- Sanitized host state: `http://<host>:<port>/api/host-state`
+- Token-gated WebSocket: `ws://<host>:<port>/ws?token=<pairing-token>`
 
 ## Controls
 
@@ -77,19 +53,14 @@ when starting the runtime.
 - Double tap: normal double click
 - Long press: right click
 - Two finger drag: scroll
-- Text box: writes text through paste injection
+- Text box: text transfer
 - Shortcut buttons: Cmd/Super, Esc, Tab, Enter, Backspace, arrows, and common modifiers
 
-## Linux Requirements
+## Desktop Actions
 
-- `ydotool` installed
-- `ydotool.service` running as the user
-- `/dev/uinput` writable by the user
+The mobile protocol accepts named Desktop Action ids through `cmd` messages.
+Arbitrary shell-command messages are not part of the product protocol.
 
-Checked on `omarchy`:
-
-```text
-ydotool 1.0.4-2
-ydotool.service active
-/run/user/1000/.ydotool_socket
-```
+Linux/Omarchy actions include screenshot, screen recording, media controls,
+window close, launcher, lock, and night light. Windows exposes the same action
+ids with explicit downgraded states where native capture work has not shipped.
