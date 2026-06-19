@@ -1,5 +1,5 @@
 use axum::{
-    Router,
+    Json, Router,
     extract::{
         Query, State,
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
@@ -9,6 +9,7 @@ use axum::{
     routing::get,
 };
 use std::net::SocketAddr;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(any(target_os = "linux", target_os = "windows", test))]
@@ -24,6 +25,7 @@ use tokio::time::timeout;
 mod commands;
 #[cfg(target_os = "windows")]
 mod enigo_input;
+mod host_surface;
 mod input;
 mod protocol;
 mod protocol_router;
@@ -31,6 +33,7 @@ mod protocol_router;
 mod uinput;
 
 use commands::CommandRegistry;
+use host_surface::{HostSurfaceState, RuntimeSettings, host_surface_state, render_mobile_index};
 use input::InputDevice;
 use protocol::{ClientMessage, ServerMessage};
 use protocol_router::{BackendEffect, ProtocolRouter};
@@ -45,6 +48,7 @@ struct AppState {
     token: Option<String>,
     commands: CommandRegistry,
     router: Mutex<ProtocolRouter>,
+    runtime: RuntimeSettings,
 }
 
 static CLIENT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -106,6 +110,10 @@ async fn ws_handler(
     }
     let client_id = next_client_id();
     ws.on_upgrade(move |socket| handle_socket(socket, state, client_id))
+}
+
+async fn api_host_state(State(state): State<Arc<AppState>>) -> Json<HostSurfaceState> {
+    Json(host_surface_state(&state.runtime, &state.commands))
 }
 
 async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, client_id: String) {
@@ -348,10 +356,7 @@ async fn do_paste(
     }
 }
 
-async fn send_windows_paste_shortcut<T, E, F>(
-    input: &Mutex<T>,
-    mut send_key: F,
-) -> Result<(), E>
+async fn send_windows_paste_shortcut<T, E, F>(input: &Mutex<T>, mut send_key: F) -> Result<(), E>
 where
     F: FnMut(&mut T, &str, bool) -> Result<(), E>,
 {
@@ -374,13 +379,18 @@ where
     Ok(())
 }
 
-async fn static_fallback(uri: Uri) -> impl IntoResponse {
-    let path = uri.path().trim_start_matches('/');
-    let file_path = std::path::PathBuf::from("static").join(if path.is_empty() || path == "/" {
-        "index.html"
-    } else {
-        path
-    });
+async fn static_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> impl IntoResponse {
+    let file_path = match static_file_path(uri.path()) {
+        Some(file_path) => file_path,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                "Invalid path\n",
+            )
+                .into_response();
+        }
+    };
 
     match tokio::fs::read(&file_path).await {
         Ok(body) => {
@@ -392,6 +402,25 @@ async fn static_fallback(uri: Uri) -> impl IntoResponse {
                 Some("svg") => "image/svg+xml",
                 _ => "application/octet-stream",
             };
+            let body = if file_path.extension().and_then(|e| e.to_str()) == Some("html") {
+                match std::str::from_utf8(&body) {
+                    Ok(html) => render_mobile_index(
+                        html,
+                        &host_surface::action_capabilities(&state.commands),
+                    )
+                    .into_bytes(),
+                    Err(error) => {
+                        warn!(
+                            "serving HTML file without action manifest because it is not valid UTF-8: {}",
+                            error
+                        );
+                        body
+                    }
+                }
+            } else {
+                body
+            };
+
             (
                 [
                     (header::CONTENT_TYPE, mime),
@@ -410,16 +439,33 @@ async fn static_fallback(uri: Uri) -> impl IntoResponse {
     }
 }
 
+fn static_file_path(uri_path: &str) -> Option<PathBuf> {
+    let path = uri_path.trim_start_matches('/');
+    if path.is_empty() {
+        return Some(PathBuf::from("static").join("index.html"));
+    }
+
+    let requested = Path::new(path);
+    if requested.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        )
+    }) {
+        return None;
+    }
+
+    Some(PathBuf::from("static").join(requested))
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let host = std::env::var("TOUCHPAD_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let port = std::env::var("TOUCHPAD_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(8765u16);
-    let token = std::env::var("TOUCHPAD_TOKEN").ok();
+    let runtime = RuntimeSettings::from_env();
+    let bind_host = runtime.bind_host.clone();
+    let bind_port = runtime.port;
+    let token = runtime.token.clone();
 
     let input = InputDevice::new().expect("Failed to initialize input device");
 
@@ -428,14 +474,16 @@ async fn main() {
         token,
         commands: CommandRegistry::new(),
         router: Mutex::new(ProtocolRouter::new()),
+        runtime,
     });
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
+        .route("/api/host-state", get(api_host_state))
         .fallback(static_fallback)
         .with_state(state.clone());
 
-    let addr: SocketAddr = format!("{}:{}", host, port).parse().unwrap();
+    let addr: SocketAddr = format!("{}:{}", bind_host, bind_port).parse().unwrap();
     info!("touchpad listening on http://{}", addr);
     if state.token.is_some() {
         info!("auth token enabled");
@@ -447,7 +495,7 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::send_windows_paste_shortcut;
+    use super::{send_windows_paste_shortcut, static_file_path};
     use std::io;
     use std::sync::Arc;
     use std::time::Duration;
@@ -476,7 +524,9 @@ mod tests {
             .expect("input lock should be available while paste waits between keys");
         drop(guard);
 
-        task.await.expect("paste task should finish").expect("paste helper should succeed");
+        task.await
+            .expect("paste task should finish")
+            .expect("paste helper should succeed");
 
         let events = events.lock().await.clone();
         assert_eq!(
@@ -488,5 +538,19 @@ mod tests {
                 ("ControlLeft".to_string(), false),
             ]
         );
+    }
+
+    #[test]
+    fn static_file_path_rejects_parent_directory_traversal() {
+        assert_eq!(
+            static_file_path("/").expect("index path"),
+            std::path::PathBuf::from("static/index.html")
+        );
+        assert_eq!(
+            static_file_path("/app.js").expect("asset path"),
+            std::path::PathBuf::from("static/app.js")
+        );
+        assert!(static_file_path("/../Cargo.toml").is_none());
+        assert!(static_file_path("/static/../../Cargo.toml").is_none());
     }
 }

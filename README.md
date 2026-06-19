@@ -46,6 +46,30 @@ Then open:
 http://100.113.201.90:8765/?token=change-me
 ```
 
+The Linux backend exposes its Desktop Host Surface state at:
+
+```text
+http://100.113.201.90:8765/api/host-state
+```
+
+The response includes pairing links, server status, readiness groups, local
+settings summary, and the Linux/Omarchy action capability manifest. Screen
+recordings are written to `~/Videos/TapPad`, and `open_recordings_folder` opens
+that folder.
+
+The Linux Tauri host surface reads that local runtime state and renders Pairing,
+Server Status, Readiness, Settings, and Action Parity:
+
+```bash
+cd ~/Work/personal/tappad/linux/TapPad
+npm install
+npm run dev
+```
+
+Keep the Rust runtime running before opening the Tauri host surface. Local
+settings still come from `TOUCHPAD_HOST`, `TOUCHPAD_PORT`, and `TOUCHPAD_TOKEN`
+when starting the runtime.
+
 ## Controls
 
 - One finger move: pointer movement
