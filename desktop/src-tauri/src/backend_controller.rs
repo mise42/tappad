@@ -43,28 +43,37 @@ impl BackendController {
         app: &AppHandle,
         update: SettingsUpdate,
     ) -> Result<HostSurfaceState, Box<dyn std::error::Error + Send + Sync>> {
-        let current = self.inner.lock().await.settings.clone();
-        let next = current.with_update(update)?;
-        self.replace_backend(app, next).await?;
-        Ok(self.host_state().await)
+        let mut inner = self.inner.lock().await;
+        let next = inner.settings.with_update(update)?;
+        self.replace_backend_locked(app, &mut inner, next).await?;
+        Ok(host_surface_state(
+            &inner.settings,
+            !inner.running.task.is_finished(),
+            true,
+        ))
     }
 
     pub async fn reset_pairing_token(
         &self,
         app: &AppHandle,
     ) -> Result<HostSurfaceState, Box<dyn std::error::Error + Send + Sync>> {
-        let current = self.inner.lock().await.settings.clone();
-        let next = current.with_new_token();
-        self.replace_backend(app, next).await?;
-        Ok(self.host_state().await)
+        let mut inner = self.inner.lock().await;
+        let next = inner.settings.with_new_token();
+        self.replace_backend_locked(app, &mut inner, next).await?;
+        Ok(host_surface_state(
+            &inner.settings,
+            !inner.running.task.is_finished(),
+            true,
+        ))
     }
 
-    async fn replace_backend(
+    async fn replace_backend_locked(
         &self,
         app: &AppHandle,
+        inner: &mut ControllerState,
         next: RuntimeSettings,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let current = self.inner.lock().await.settings.clone();
+        let current = inner.settings.clone();
         let next_running = start_backend(next.clone()).await?;
         if let Err(error) = set_launch_at_login(app, next.launch_at_login) {
             next_running.shutdown.cancel();
@@ -76,7 +85,6 @@ impl BackendController {
             return Err(error.into());
         }
 
-        let mut inner = self.inner.lock().await;
         let previous = std::mem::replace(&mut inner.running, next_running);
         inner.settings = next;
         previous.shutdown.cancel();

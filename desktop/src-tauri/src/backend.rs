@@ -33,6 +33,7 @@ use crate::{
 
 static MOBILE_ASSETS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../mobile");
 static CLIENT_COUNTER: AtomicU64 = AtomicU64::new(0);
+const PASTE_TEXT_LIMIT_BYTES: usize = 12_000;
 
 #[derive(Debug, serde::Deserialize)]
 struct WsQuery {
@@ -214,11 +215,7 @@ async fn do_paste(
     input: Arc<Mutex<InputDevice>>,
     text: String,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let text = if text.len() > 12000 {
-        text[..12000].to_string()
-    } else {
-        text
-    };
+    let text = truncate_to_char_boundary(text, PASTE_TEXT_LIMIT_BYTES);
 
     #[cfg(target_os = "windows")]
     {
@@ -266,7 +263,11 @@ async fn do_paste(
             stdin.write_all(text.as_bytes()).await?;
             stdin.shutdown().await?;
         }
-        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), child_primary.wait()).await;
+        let primary_status =
+            tokio::time::timeout(std::time::Duration::from_secs(2), child_primary.wait()).await;
+        if primary_status.is_err() {
+            child_primary.kill().await.ok();
+        }
 
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         send_paste_shortcut(&input, "ShiftLeft").await
@@ -348,6 +349,18 @@ async fn static_fallback(uri: Uri) -> Response {
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
+fn truncate_to_char_boundary(text: String, max_bytes: usize) -> String {
+    if text.len() <= max_bytes {
+        return text;
+    }
+
+    let mut limit = max_bytes;
+    while limit > 0 && !text.is_char_boundary(limit) {
+        limit -= 1;
+    }
+    text[..limit].to_string()
+}
+
 fn mobile_asset_path(uri_path: &str) -> Option<String> {
     let path = uri_path.trim_start_matches('/');
     if path.is_empty() {
@@ -366,7 +379,7 @@ fn mobile_asset_path(uri_path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::mobile_asset_path;
+    use super::{PASTE_TEXT_LIMIT_BYTES, mobile_asset_path, truncate_to_char_boundary};
 
     #[test]
     fn mobile_asset_path_rejects_traversal() {
@@ -374,5 +387,25 @@ mod tests {
         assert_eq!(mobile_asset_path("/app.js"), Some("app.js".to_string()));
         assert!(mobile_asset_path("/../Cargo.toml").is_none());
         assert!(mobile_asset_path("/mobile/../../Cargo.toml").is_none());
+    }
+
+    #[test]
+    fn paste_text_is_truncated_to_byte_limit() {
+        let text = "a".repeat(PASTE_TEXT_LIMIT_BYTES + 1);
+
+        let truncated = truncate_to_char_boundary(text, PASTE_TEXT_LIMIT_BYTES);
+
+        assert_eq!(truncated.len(), PASTE_TEXT_LIMIT_BYTES);
+    }
+
+    #[test]
+    fn paste_text_truncation_preserves_utf8_boundaries() {
+        let mut text = "a".repeat(PASTE_TEXT_LIMIT_BYTES - 1);
+        text.push('好');
+
+        let truncated = truncate_to_char_boundary(text, PASTE_TEXT_LIMIT_BYTES);
+
+        assert_eq!(truncated.len(), PASTE_TEXT_LIMIT_BYTES - 1);
+        assert!(truncated.is_char_boundary(truncated.len()));
     }
 }

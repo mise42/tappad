@@ -104,22 +104,26 @@ pub fn settings_path(data_dir: &Path) -> PathBuf {
 
 fn read_stored_settings(data_dir: &Path) -> io::Result<StoredSettings> {
     let path = settings_path(data_dir);
-    if let Ok(text) = fs::read_to_string(&path) {
-        if let Ok(settings) = serde_json::from_str::<StoredSettings>(&text) {
+    match fs::read_to_string(&path) {
+        Ok(text) => {
+            let settings = serde_json::from_str::<StoredSettings>(&text)
+                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
             let token = normalize_token(settings.token)?;
             validate_port(settings.port)?;
-            return Ok(StoredSettings { token, ..settings });
+            Ok(StoredSettings { token, ..settings })
         }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let settings = StoredSettings {
+                port: 8765,
+                token: generate_pairing_token(),
+                launch_at_login: false,
+            };
+            fs::create_dir_all(data_dir)?;
+            fs::write(&path, serde_json::to_string_pretty(&settings)?)?;
+            Ok(settings)
+        }
+        Err(error) => Err(error),
     }
-
-    let settings = StoredSettings {
-        port: 8765,
-        token: generate_pairing_token(),
-        launch_at_login: false,
-    };
-    fs::create_dir_all(data_dir)?;
-    fs::write(&path, serde_json::to_string_pretty(&settings)?)?;
-    Ok(settings)
 }
 
 fn validate_port(port: u16) -> io::Result<()> {
@@ -216,6 +220,21 @@ mod tests {
         assert_eq!(settings.port, 8765);
         assert!(!settings.token.is_empty());
         assert!(settings_path(dir.path()).exists());
+    }
+
+    #[test]
+    fn corrupt_settings_are_reported_without_overwrite() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = settings_path(dir.path());
+        fs::write(&path, "{bad json").expect("write settings");
+
+        let error = RuntimeSettings::from_store(dir.path(), false).expect_err("invalid settings");
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            fs::read_to_string(&path).expect("settings text"),
+            "{bad json"
+        );
     }
 
     #[test]
