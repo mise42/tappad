@@ -62,10 +62,12 @@ const parseAccessResponse = async (response) => {
     throw new Error(payload.error || "Download access is not ready yet.");
   }
 
-  const selectedDownload = payload.download || getSelectedDownload(payload.downloads);
+  const hasExplicitDownload = Object.prototype.hasOwnProperty.call(payload, "download");
+  const selectedDownload = hasExplicitDownload ? payload.download : getSelectedDownload(payload.downloads);
 
   if (!selectedDownload?.url) {
-    throw new Error("This download is not configured yet.");
+    const platformLabel = platformLabels[selectedPlatform] || "desktop";
+    throw new Error(`The ${platformLabel} download is not configured yet.`);
   }
 
   return selectedDownload;

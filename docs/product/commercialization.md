@@ -8,7 +8,9 @@ TapPad turns a phone or tablet into a mobile input surface for a desktop machine
 
 TapPad is now a cross-platform desktop beta across macOS, Windows, and Linux/Omarchy. The buyer is a desktop user working with a larger screen, temporary desk setup, presentation setup, or second-screen workflow who wants a temporary trackpad, keyboard, text-transfer surface, and control pad.
 
-macOS was the first commercial wedge and remains the most polished individual-license path. Windows and Linux are now part of the product promise rather than future directions, with platform-specific downgrade notes where action parity is not complete.
+macOS was the first commercial wedge and remains important for individual-license polish. Windows and Linux are now part of the product promise rather than future directions, with platform-specific downgrade notes where action parity is not complete.
+
+The current macOS public beta download can use the Tauri `.dmg` when it represents the tested desktop host package. The native macOS app remains the deeper system-integration path rather than a prerequisite for every beta download.
 
 ## Commercial surfaces
 
