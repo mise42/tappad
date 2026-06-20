@@ -102,7 +102,7 @@ pub async fn bind(settings: &RuntimeSettings) -> io::Result<TcpListener> {
 }
 
 async fn api_host_state(State(state): State<Arc<BackendRuntime>>) -> Json<HostSurfaceState> {
-    Json(host_surface_state(state.settings(), true, false))
+    Json(host_surface_state(state.settings(), true, None, false))
 }
 
 async fn ws_handler(

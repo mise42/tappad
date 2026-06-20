@@ -78,6 +78,33 @@
         box-shadow: 0 18px 45px rgb(0 0 0 / 8%);
       }
 
+      .segmented {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 3px;
+        margin-bottom: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 3px;
+        background: var(--secondary);
+      }
+
+      .segmented button {
+        width: 100%;
+        color: var(--muted);
+        background: transparent;
+      }
+
+      .segmented button[aria-selected="true"] {
+        color: var(--ink);
+        background: var(--panel);
+        box-shadow: 0 1px 3px rgb(0 0 0 / 10%);
+      }
+
+      .view[hidden] {
+        display: none;
+      }
+
       .pairing-window > p {
         max-width: 430px;
         margin-right: auto;
@@ -156,6 +183,11 @@
       a.secondary {
         color: var(--ink);
         background: var(--secondary);
+      }
+
+      button.weak {
+        color: var(--muted);
+        background: transparent;
       }
 
       button:disabled {
@@ -242,6 +274,22 @@
         color: var(--muted);
       }
 
+      .pairing-link {
+        color: var(--muted);
+      }
+
+      .banner {
+        margin-bottom: 16px;
+        border: 1px solid #efc9c2;
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: var(--danger);
+        background: #fff1ee;
+        font-size: 13px;
+        line-height: 1.4;
+        text-align: left;
+      }
+
       .server-pill {
         display: inline-flex;
         align-items: center;
@@ -282,6 +330,7 @@
         display: grid;
         gap: 18px;
         padding: 0 16px 16px;
+        text-align: left;
       }
 
       .advanced-section {
@@ -344,22 +393,20 @@
   </head>
   <body>
     <main>
-      <section class="pairing-window" id="pairing"></section>
-      <details class="advanced">
-        <summary>Advanced</summary>
-        <div class="advanced-content">
-          <section class="advanced-section" id="server"></section>
-          <section class="advanced-section" id="settings"></section>
-          <section class="advanced-section" id="readiness"></section>
-          <section class="advanced-section" id="actions"></section>
-        </div>
-      </details>
+      <nav class="segmented" aria-label="Host view">
+        <button type="button" data-view-tab="pairing" aria-selected="true">Pairing</button>
+        <button type="button" data-view-tab="settings" aria-selected="false">Settings</button>
+      </nav>
+      <section class="pairing-window view" id="pairingView"></section>
+      <section class="pairing-window view" id="settingsView" hidden></section>
       <p id="statusText" role="status"></p>
     </main>
 
     <script>
       const invoke = window.__TAURI__?.core?.invoke;
+      const listen = window.__TAURI__?.event?.listen;
       let currentState = null;
+      let currentView = viewFromHash();
 
       function escapeHtml(value) {
         return String(value).replace(/[&<>"']/g, (char) => {
@@ -393,48 +440,74 @@
         setStatus("Copied");
       }
 
+      function normalizeView(view) {
+        return view === "settings" ? "settings" : "pairing";
+      }
+
+      function viewFromHash() {
+        return normalizeView(window.location.hash.replace(/^#/, ""));
+      }
+
+      function setView(view, options = {}) {
+        const next = normalizeView(view);
+        currentView = next;
+        document.querySelectorAll("[data-view-tab]").forEach((button) => {
+          button.setAttribute("aria-selected", String(button.dataset.viewTab === next));
+        });
+        document.getElementById("pairingView").hidden = next !== "pairing";
+        document.getElementById("settingsView").hidden = next !== "settings";
+        if (options.syncHash !== false && window.location.hash !== `#${next}`) {
+          history.replaceState(null, "", `#${next}`);
+        }
+        if (next === "settings") {
+          window.scrollTo(0, 0);
+        }
+      }
+
       function renderPairing(state) {
         const pairing = state.pairing;
         const server = state.serverStatus;
-        const qr = pairing.qrCodeDataUrl
+        const qr = server.running && pairing.qrCodeDataUrl
           ? `<img alt="Pairing QR code" src="${escapeHtml(pairing.qrCodeDataUrl)}" />`
-          : `<p class="qr-unavailable">Pairing code unavailable. Copy the link below instead.</p>`;
+          : `<p class="qr-unavailable">Pairing is currently unavailable.${server.reason ? ` ${escapeHtml(server.reason)}.` : ""}</p>`;
         const backup =
-          pairing.localUrl && pairing.localUrl !== pairing.preferredUrl
+          server.running && pairing.localUrl && pairing.localUrl !== pairing.preferredUrl
             ? `<p class="backup-link">Backup: ${escapeHtml(pairing.localUrl)}</p>`
             : "";
-        document.getElementById("pairing").innerHTML = `
+        document.getElementById("pairingView").innerHTML = `
           <h1>Scan to control this computer</h1>
           <p>Open TapPad from a phone, tablet, or browser on the same local network.</p>
           <div class="qr-code">${qr}</div>
-          <p class="pairing-link">${escapeHtml(pairing.preferredUrl)}</p>
+          <p class="pairing-link">${server.running ? escapeHtml(pairing.preferredUrl) : "Pairing link unavailable while the server is stopped."}</p>
           ${backup}
           <div class="actions">
-            <button id="copyLink" type="button">Copy Link</button>
-            <a class="button secondary" href="${escapeHtml(pairing.preferredUrl)}" target="_blank" rel="noreferrer">Open Locally</a>
+            <button class="weak" id="copyLink" type="button" ${server.running ? "" : "disabled"}>Copy</button>
           </div>
           <div class="server-pill" data-running="${server.running}">Server ${server.running ? "running" : "stopped"} on ${escapeHtml(server.host)}:${escapeHtml(server.port)}</div>
         `;
         document.getElementById("copyLink").addEventListener("click", () => copyText(pairing.preferredUrl));
       }
 
-      function renderServer(state) {
+      function serverDiagnostics(state) {
         const server = state.serverStatus;
-        document.getElementById("server").innerHTML = `
+        return `
           <h2>Server Status</h2>
           <dl>
             <div><dt>Running</dt><dd>${server.running ? "Yes" : "No"}</dd></div>
             <div><dt>Address</dt><dd>${escapeHtml(server.host)}:${escapeHtml(server.port)}</dd></div>
             <div><dt>Bind address</dt><dd>${escapeHtml(server.bindAddress)}</dd></div>
             <div><dt>Token gate</dt><dd>${server.tokenEnabled ? "Enabled" : "Disabled"}</dd></div>
+            ${server.reason ? `<div><dt>Reason</dt><dd>${escapeHtml(server.reason)}</dd></div>` : ""}
           </dl>
         `;
       }
 
       function renderSettings(state) {
         const settings = state.settings;
-        document.getElementById("settings").innerHTML = `
+        const server = state.serverStatus;
+        document.getElementById("settingsView").innerHTML = `
           <h2>Settings</h2>
+          ${server.running ? "" : `<div class="banner">TapPad needs attention.${server.reason ? ` ${escapeHtml(server.reason)}.` : ""}</div>`}
           <form id="settingsForm">
             <dl>
               <div>
@@ -456,6 +529,14 @@
             </div>
             <p class="note">${escapeHtml(settings.launchAtLogin.note || "")}</p>
           </form>
+          <details class="advanced" ${server.running ? "" : "open"}>
+            <summary>Diagnostics</summary>
+            <div class="advanced-content">
+              <section class="advanced-section">${serverDiagnostics(state)}</section>
+              <section class="advanced-section">${readinessDiagnostics(state)}</section>
+              <section class="advanced-section">${actionDiagnostics(state)}</section>
+            </div>
+          </details>
         `;
 
         document.getElementById("settingsForm").addEventListener("submit", async (event) => {
@@ -469,8 +550,8 @@
         document.getElementById("resetToken").addEventListener("click", resetToken);
       }
 
-      function renderReadiness(state) {
-        document.getElementById("readiness").innerHTML = `
+      function readinessDiagnostics(state) {
+        return `
           <h2>Readiness</h2>
           ${state.readiness
             .map(
@@ -485,9 +566,9 @@
         `;
       }
 
-      function renderActions(state) {
+      function actionDiagnostics(state) {
         const visibleActions = Object.entries(state.actions).filter(([, value]) => value.state !== "hidden");
-        document.getElementById("actions").innerHTML = `
+        return `
           <h2>Desktop Actions</h2>
           <div class="action-grid">
             ${visibleActions
@@ -508,10 +589,8 @@
       function render(state) {
         currentState = state;
         renderPairing(state);
-        renderServer(state);
         renderSettings(state);
-        renderReadiness(state);
-        renderActions(state);
+        setView(currentView, { syncHash: false });
       }
 
       async function refresh() {
@@ -525,7 +604,7 @@
         try {
           setStatus("Saving...");
           render(await invoke("save_settings", settings));
-          setStatus("Saved and restarted");
+          setStatus(currentState.serverStatus.running ? "Saved and restarted" : "Saved");
         } catch (error) {
           setStatus(String(error), "error");
           render(currentState);
@@ -536,11 +615,23 @@
         try {
           setStatus("Resetting...");
           render(await invoke("reset_pairing_token"));
-          setStatus("Token reset and backend restarted");
+          setStatus(currentState.serverStatus.running ? "Token reset and backend restarted" : "Token reset");
         } catch (error) {
           setStatus(String(error), "error");
         }
       }
+
+      document.querySelectorAll("[data-view-tab]").forEach((button) => {
+        button.addEventListener("click", () => setView(button.dataset.viewTab));
+      });
+
+      window.addEventListener("hashchange", () => setView(viewFromHash(), { syncHash: false }));
+
+      if (listen) {
+        listen("navigate_host_view", (event) => setView(event.payload));
+      }
+
+      setView(currentView, { syncHash: false });
 
       refresh().catch((error) => {
         document.querySelector("main").innerHTML = `
