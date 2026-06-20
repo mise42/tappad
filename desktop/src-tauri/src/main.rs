@@ -12,6 +12,7 @@ mod input_chord;
 mod protocol;
 mod protocol_router;
 mod settings;
+mod tray;
 
 use std::sync::Arc;
 
@@ -19,10 +20,16 @@ use backend_controller::{BackendController, launch_at_login_enabled};
 use host_surface::HostSurfaceState;
 use settings::SettingsUpdate;
 use tauri::{AppHandle, Manager, State};
+use tracing::warn;
 
 #[tauri::command]
-async fn host_state(state: State<'_, Arc<BackendController>>) -> Result<HostSurfaceState, String> {
-    Ok(state.host_state().await)
+async fn host_state(
+    app: AppHandle,
+    state: State<'_, Arc<BackendController>>,
+) -> Result<HostSurfaceState, String> {
+    let current = state.host_state().await;
+    tray::update_status(&app, &current);
+    Ok(current)
 }
 
 #[tauri::command]
@@ -33,7 +40,7 @@ async fn save_settings(
     app: AppHandle,
     state: State<'_, Arc<BackendController>>,
 ) -> Result<HostSurfaceState, String> {
-    state
+    let next = state
         .save_settings(
             &app,
             SettingsUpdate {
@@ -43,7 +50,9 @@ async fn save_settings(
             },
         )
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    tray::update_status(&app, &next);
+    Ok(next)
 }
 
 #[tauri::command]
@@ -51,10 +60,12 @@ async fn reset_pairing_token(
     app: AppHandle,
     state: State<'_, Arc<BackendController>>,
 ) -> Result<HostSurfaceState, String> {
-    state
+    let next = state
         .reset_pairing_token(&app)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    tray::update_status(&app, &next);
+    Ok(next)
 }
 
 fn main() {
@@ -66,11 +77,13 @@ fn main() {
                 .app_name("TapPad")
                 .build(),
         )
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             host_state,
             save_settings,
             reset_pairing_token
         ])
+        .on_window_event(tray::handle_window_event)
         .setup(|app| {
             let data_dir = app
                 .path()
@@ -80,7 +93,10 @@ fn main() {
             let controller =
                 tauri::async_runtime::block_on(BackendController::new(data_dir, launch_at_login))
                     .map_err(|error| error.to_string())?;
-            app.manage(controller);
+            app.manage(controller.clone());
+            if let Err(error) = tray::init(app, controller) {
+                warn!("TapPad tray unavailable on this desktop environment: {error}");
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -31,6 +31,8 @@ pub struct ServerStatus {
     #[serde(rename = "tokenEnabled")]
     pub token_enabled: bool,
     pub running: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -69,6 +71,7 @@ pub struct HostSurfaceState {
 pub fn host_surface_state(
     settings: &RuntimeSettings,
     backend_running: bool,
+    backend_reason: Option<String>,
     include_pairing_token: bool,
 ) -> HostSurfaceState {
     HostSurfaceState {
@@ -79,6 +82,7 @@ pub fn host_surface_state(
             bind_address: settings.bind_host.clone(),
             token_enabled: !settings.token.trim().is_empty(),
             running: backend_running,
+            reason: backend_reason,
         },
         readiness: readiness_groups(),
         settings: SettingsSummary {
@@ -267,13 +271,14 @@ mod tests {
             token: "pair-token".to_string(),
             hostname: "desktop".to_string(),
             launch_at_login: true,
+            close_to_tray_hint_shown: false,
             lan_host: None,
         }
     }
 
     #[test]
     fn tauri_state_includes_pairing_token() {
-        let state = host_surface_state(&test_settings(), true, true);
+        let state = host_surface_state(&test_settings(), true, None, true);
 
         assert_eq!(state.pairing.token.as_deref(), Some("pair-token"));
         assert_eq!(
@@ -291,11 +296,27 @@ mod tests {
 
     #[test]
     fn http_state_is_sanitized() {
-        let state = host_surface_state(&test_settings(), true, false);
+        let state = host_surface_state(&test_settings(), true, None, false);
 
         assert!(state.pairing.token.is_none());
         assert_eq!(state.pairing.preferred_url, "http://desktop:8765/");
         assert!(state.server_status.token_enabled);
+    }
+
+    #[test]
+    fn stopped_backend_exposes_reason() {
+        let state = host_surface_state(
+            &test_settings(),
+            false,
+            Some("port 8765 is already in use".to_string()),
+            true,
+        );
+
+        assert!(!state.server_status.running);
+        assert_eq!(
+            state.server_status.reason.as_deref(),
+            Some("port 8765 is already in use")
+        );
     }
 
     #[test]

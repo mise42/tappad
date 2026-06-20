@@ -15,6 +15,7 @@ pub struct RuntimeSettings {
     pub token: String,
     pub hostname: String,
     pub launch_at_login: bool,
+    pub close_to_tray_hint_shown: bool,
     #[serde(skip)]
     pub lan_host: Option<Ipv4Addr>,
 }
@@ -33,6 +34,8 @@ struct StoredSettings {
     port: u16,
     token: String,
     launch_at_login: bool,
+    #[serde(default)]
+    close_to_tray_hint_shown: bool,
 }
 
 impl RuntimeSettings {
@@ -44,6 +47,7 @@ impl RuntimeSettings {
             token: stored.token,
             hostname: hostname(),
             launch_at_login,
+            close_to_tray_hint_shown: stored.close_to_tray_hint_shown,
             lan_host: preferred_lan_ipv4(),
         })
     }
@@ -57,6 +61,7 @@ impl RuntimeSettings {
             token,
             hostname: self.hostname.clone(),
             launch_at_login: update.launch_at_login,
+            close_to_tray_hint_shown: self.close_to_tray_hint_shown,
             lan_host: self.lan_host,
         })
     }
@@ -64,6 +69,13 @@ impl RuntimeSettings {
     pub fn with_new_token(&self) -> Self {
         Self {
             token: generate_pairing_token(),
+            ..self.clone()
+        }
+    }
+
+    pub fn with_close_to_tray_hint_shown(&self) -> Self {
+        Self {
+            close_to_tray_hint_shown: true,
             ..self.clone()
         }
     }
@@ -93,6 +105,7 @@ pub fn persist_settings(data_dir: &Path, settings: &RuntimeSettings) -> io::Resu
         port: settings.port,
         token: settings.token.clone(),
         launch_at_login: settings.launch_at_login,
+        close_to_tray_hint_shown: settings.close_to_tray_hint_shown,
     };
     let text = serde_json::to_string_pretty(&stored)?;
     fs::write(settings_path(data_dir), text)
@@ -117,6 +130,7 @@ fn read_stored_settings(data_dir: &Path) -> io::Result<StoredSettings> {
                 port: 8765,
                 token: generate_pairing_token(),
                 launch_at_login: false,
+                close_to_tray_hint_shown: false,
             };
             fs::create_dir_all(data_dir)?;
             fs::write(&path, serde_json::to_string_pretty(&settings)?)?;
@@ -245,6 +259,7 @@ mod tests {
             token: "token".to_string(),
             hostname: "host".to_string(),
             launch_at_login: false,
+            close_to_tray_hint_shown: false,
             lan_host: None,
         };
 
@@ -257,5 +272,39 @@ mod tests {
                 })
                 .is_err()
         );
+    }
+
+    #[test]
+    fn older_settings_default_close_to_tray_hint_to_unshown() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = settings_path(dir.path());
+        fs::write(
+            &path,
+            r#"{"port":8765,"token":"token","launchAtLogin":false}"#,
+        )
+        .expect("write settings");
+
+        let settings = RuntimeSettings::from_store(dir.path(), false).expect("settings");
+
+        assert!(!settings.close_to_tray_hint_shown);
+    }
+
+    #[test]
+    fn close_to_tray_hint_flag_is_persisted() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let settings = RuntimeSettings {
+            bind_host: "0.0.0.0".to_string(),
+            port: 8765,
+            token: "token".to_string(),
+            hostname: "host".to_string(),
+            launch_at_login: false,
+            close_to_tray_hint_shown: true,
+            lan_host: None,
+        };
+
+        persist_settings(dir.path(), &settings).expect("persist settings");
+
+        let stored = fs::read_to_string(settings_path(dir.path())).expect("settings text");
+        assert!(stored.contains(r#""closeToTrayHintShown": true"#));
     }
 }
