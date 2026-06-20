@@ -62,8 +62,17 @@ impl InputDevice {
             .map_err(to_io_error)
     }
 
-    pub fn is_typeable(&self, _ch: char) -> bool {
-        true
+    pub fn is_typeable(&self, ch: char) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            ch.is_ascii()
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = ch;
+            true
+        }
     }
 
     pub fn type_text(&mut self, text: &str) -> io::Result<()> {
