@@ -4,7 +4,7 @@ How the engineering skills should consume this repo's domain documentation when 
 
 ## Repo scope
 
-This is a single-context TapPad product repo. It includes the current Omarchy/Linux backend, the first commercial macOS backend, the shared mobile input surface, and future product surfaces such as the marketing website and online activation backend.
+This is a single-context TapPad product repo. It includes macOS, Windows, and Linux/Omarchy target backends, the shared mobile input surface, the marketing landing site, and future product surfaces such as the online activation backend.
 
 Do not split domain context just because multiple deliverables exist. Keep using the root `CONTEXT.md` until there are genuinely separate domain vocabularies that need separate owners.
 
