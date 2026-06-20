@@ -306,6 +306,7 @@ jobs:
           NOTES
 
           gh release create "$tag" release-files/* \
+            --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "TapPad main ${timestamp} ${short_sha}" \
             --notes-file release-notes.md \
