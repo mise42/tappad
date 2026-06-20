@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-TapPad currently includes an Omarchy/Linux backend, a shared mobile input surface, and a macOS package that is intended to become the first commercial backend. The repo will also include a future website and online activation backend.
+TapPad currently includes macOS, Windows, and Linux/Omarchy target backends, a shared mobile input surface, desktop host surfaces, and a marketing landing site. The repo will also include a future online activation backend.
 
 These deliverables are different surfaces, but they still share one product language: mobile input surface, target backend, platform input device, text transfer, desktop action, activation, and entitlement.
 
@@ -21,5 +21,5 @@ Do not introduce `CONTEXT-MAP.md` or per-surface `CONTEXT.md` files until the we
 ## Consequences
 
 - Engineering skills should read the root `CONTEXT.md` for product vocabulary before working anywhere in the repo.
-- Product, website, activation, macOS, and Omarchy work should use the same names for shared concepts.
+- Product, website, activation, macOS, Windows, and Linux/Omarchy work should use the same names for shared concepts.
 - Future split points remain possible, but they should be driven by real domain divergence rather than directory structure alone.

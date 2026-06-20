@@ -17,17 +17,20 @@ Each supported target backend has a desktop host surface; Linux requires a GUI d
 **Target Backend**:
 The desktop-side backend that receives mobile input and applies it to the target desktop environment. Omarchy/Linux and macOS are different target backends.
 
+**Supported Target Backends**:
+The desktop platforms with a TapPad host surface and backend path today: macOS, Windows, and Linux/Omarchy.
+
 **Platform Input Device**:
 The target-backend capability that applies pointer, click, scroll, key, and typed-text input to the target desktop.
 
-**Current Backend**:
-The target backend that already proves the product experience today. For this project, the current backend is Omarchy/Linux.
+**Cross-Platform Beta**:
+The current product posture for the desktop host: macOS, Windows, and Linux/Omarchy are all beta target backends for validating the same mobile input surface and desktop host contract.
 
-**First Commercial Backend**:
-The first target backend intended to prove paid product value. For this project, the first commercial backend is macOS; Omarchy/Linux remains an existing supported backend rather than the initial commercial wedge.
+**Commercial Wedge**:
+The buyer and platform focus used to prove paid value first. macOS was the first commercial wedge, but it is no longer the whole product position now that Windows and Linux host surfaces also exist.
 
 **First Buyer**:
-A MacBook user working with an external display who wants a phone or tablet to become a temporary trackpad, keyboard, and control pad.
+A desktop user working across a larger screen, temporary desk setup, presentation setup, or second-screen workflow who wants a phone or tablet to become a temporary trackpad, keyboard, text surface, and control pad.
 
 **Product Name**:
 TapPad is the public product name.

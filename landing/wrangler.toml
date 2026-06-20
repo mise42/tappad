@@ -1,0 +1,11 @@
+name = "tappad"
+compatibility_date = "2026-06-20"
+pages_build_output_dir = "."
+
+[[r2_buckets]]
+binding = "TAPPAD_DOWNLOADS_BUCKET"
+bucket_name = "tappad-downloads"
+
+[[r2_buckets]]
+binding = "TAPPAD_LEADS_BUCKET"
+bucket_name = "tappad-downloads"

@@ -4,19 +4,19 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f7f2e8" />
-    <title>TapPad - Mobile Input Surface for Mac</title>
+    <title>TapPad - Mobile Input Surface for Desktop</title>
     <meta
       name="description"
-      content="TapPad turns your phone into a modern trackpad, keyboard, text surface, and command pad for your Mac."
+      content="Install TapPad on the desktop you want to control, then scan from any phone or tablet. No mobile app download is required."
     />
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=download-button-1" />
   </head>
   <body>
     <header class="site-header">
       <a class="brand" href="#top" aria-label="TapPad home">TapPad</a>
       <nav aria-label="Primary navigation">
         <a href="#scenarios">Scenarios</a>
-        <a href="#feedback">Feedback</a>
+        <a href="mailto:hello@tappad.app?subject=TapPad%20beta%20feedback">Feedback</a>
         <a class="nav-cta" href="#download">Download</a>
       </nav>
     </header>
@@ -24,101 +24,160 @@
     <main id="top">
       <section class="hero" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <p class="kicker">Mac beta setup is live</p>
-          <h1 id="hero-title">A modern mobile input surface for your Mac.</h1>
+          <p class="kicker">Your phone becomes the control surface</p>
+          <h1 id="hero-title">Control your desktop from your phone.</h1>
           <p class="hero-text">
-            Turn your phone into a trackpad, keyboard, text surface, and command pad for a desktop setup.
+            Use the screen already in your hand as a trackpad, keyboard, text pad, and command deck for the computer nearby.
           </p>
           <div class="hero-actions">
-            <a class="primary-action" href="#download">Open Mac beta setup</a>
+            <a class="primary-action" href="#download">Download TapPad</a>
             <a class="secondary-action" href="#scenarios">See use cases</a>
           </div>
         </div>
 
-        <div class="workspace-visual" aria-label="TapPad controlling a Mac from a phone">
-          <div class="monitor">
-            <div class="monitor-bar">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
-            <div class="code-lines">
-              <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-            </div>
-            <div class="prompt-strip">vibe coding session</div>
+        <figure class="workspace-visual" aria-label="TapPad mobile input surface screenshot">
+          <div class="product-shot-frame">
+            <img
+              src="./assets/tappad-phone-screenshot.png?v=phone-shot-2"
+              width="1206"
+              height="2622"
+              alt="TapPad running on a phone with touchpad, text input, and shortcut keys"
+            />
           </div>
-          <div class="phone">
-            <div class="phone-top">
-              <strong>TapPad</strong>
-              <span>Connected</span>
-            </div>
-            <div class="pad-surface">
-              <span></span>
-            </div>
-            <div class="phone-keys">
-              <b>⌘</b>
-              <b>Text</b>
-              <b>Actions</b>
-            </div>
-          </div>
-          <div class="gesture-path"></div>
-        </div>
+        </figure>
       </section>
 
       <section id="scenarios" class="scenarios" aria-labelledby="scenarios-title">
         <div class="section-heading">
           <p class="kicker">Use scenarios</p>
-          <h2 id="scenarios-title">Built for the moments a mouse is the wrong shape.</h2>
+          <h2 id="scenarios-title">Four ways your phone becomes useful at the desk.</h2>
         </div>
         <div class="scenario-list">
           <article>
             <span>01</span>
-            <h3>Vibe code on a big screen</h3>
-            <p>Keep your Mac on the external display while your phone handles pointing, shortcuts, and prompts.</p>
+            <h3>Control from away</h3>
+            <p>Use your phone as a touchpad when you do not want to reach for the mouse and keyboard, or when you are sitting away from the screen.</p>
           </article>
           <article>
             <span>02</span>
-            <h3>Use a temporary trackpad</h3>
-            <p>Recover a precise input surface when the desk setup changes, the trackpad is out of reach, or the mouse is not enough.</p>
+            <h3>Input across screens</h3>
+            <p>Type, dictate, or paste on the phone with your favorite input method, then send the text into the focused desktop app.</p>
           </article>
           <article>
             <span>03</span>
-            <h3>Move text faster</h3>
-            <p>Draft text on the phone and send it into the focused Mac app through typing or paste paths.</p>
+            <h3>Trigger desktop actions</h3>
+            <p>Run common desktop actions from the phone: screenshots, media controls, app launch, window control, recording, and more.</p>
           </article>
           <article>
             <span>04</span>
-            <h3>Control without reaching</h3>
-            <p>Trigger desktop actions from a couch, standing desk, presentation setup, or second-screen workflow.</p>
+            <h3>Skip extra hardware</h3>
+            <p>Keep working when you did not bring a mouse, the trackpad is out of reach, or you do not want to buy another input device.</p>
           </article>
         </div>
       </section>
 
       <section class="platforms" aria-labelledby="platform-title">
         <div>
-          <p class="kicker">Mac first. Not Mac only.</p>
-          <h2 id="platform-title">A multi-backend input surface, starting with Mac.</h2>
+          <p class="kicker">One desktop install. Any phone or tablet.</p>
+          <h2 id="platform-title">Install TapPad on the computer you want to control. Open it from any phone.</h2>
         </div>
-        <p>
-          macOS is the first commercial backend. Windows and Android are important future directions, and Omarchy/Linux remains an existing supported path.
-        </p>
+        <div>
+          <div class="platform-badges" aria-label="TapPad connection and mobile compatibility">
+            <span class="local-badge">Fully Local</span>
+            <span class="mobile-compat-icons" aria-label="Works with iPhone, Android phones, and tablets">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="8" y="2.75" width="8" height="18.5" rx="2.4"></rect>
+                <path d="M10.8 18.4h2.4"></path>
+              </svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="4.75" y="3.75" width="14.5" height="16.5" rx="2.4"></rect>
+                <path d="M10.8 17.35h2.4"></path>
+              </svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8.2 7.6h7.6"></path>
+                <path d="M8.7 7.6 7.1 5.2"></path>
+                <path d="m15.3 7.6 1.6-2.4"></path>
+                <path d="M7.35 9.1h9.3v7.4a2.1 2.1 0 0 1-2.1 2.1h-5.1a2.1 2.1 0 0 1-2.1-2.1Z"></path>
+                <path d="M5.2 10.4v4.5"></path>
+                <path d="M18.8 10.4v4.5"></path>
+                <path d="M10 11.5h.1"></path>
+                <path d="M13.9 11.5h.1"></path>
+              </svg>
+            </span>
+          </div>
+          <p>
+            Install TapPad on the macOS, Windows, or Linux computer you want to control. Any phone or tablet can join through the local QR link.
+          </p>
+          <ol class="setup-flow platform-flow" aria-label="TapPad setup flow">
+            <li>Install TapPad</li>
+            <li>Scan QR code</li>
+            <li>Control from phone</li>
+          </ol>
+        </div>
       </section>
 
       <section id="download" class="download" aria-labelledby="download-title">
         <div>
-          <p class="kicker">Public beta</p>
-          <h2 id="download-title">Try TapPad without an application form.</h2>
+          <p class="kicker">Three-platform beta</p>
+          <h2 id="download-title">Download TapPad for the computer you want to control.</h2>
           <p>
-            Start from the Mac beta setup guide, then send feedback from the website or the app if TapPad fits your workflow.
+            Choose the app for your Mac, Windows PC, or Linux PC. We will ask for an email and quick use case before the download starts.
           </p>
         </div>
-        <div class="download-actions">
-          <a class="primary-action" href="https://github.com/mise42/omarchy-touchpad#mac-beta-setup">Open Mac beta setup guide</a>
-          <a class="secondary-action" id="feedback" href="mailto:hello@tappad.app?subject=TapPad%20beta%20feedback">Send Feedback</a>
+
+        <div class="platform-downloads" aria-label="TapPad downloads">
+          <p class="download-detected-copy" data-detected-copy>Choose the version for the computer you want to control.</p>
+          <button type="button" data-download-trigger data-platform="macos">
+            <span class="download-button-label">
+              <strong>Download for Mac</strong>
+              <em data-platform-note></em>
+            </span>
+          </button>
+          <button type="button" data-download-trigger data-platform="windows">
+            <span class="download-button-label">
+              <strong>Download for Windows PC</strong>
+              <em data-platform-note></em>
+            </span>
+          </button>
+          <button type="button" data-download-trigger data-platform="linux">
+            <span class="download-button-label">
+              <strong>Download for Linux PC</strong>
+              <em data-platform-note></em>
+            </span>
+          </button>
         </div>
       </section>
     </main>
 
-    <script src="./script.js"></script>
+    <dialog class="download-dialog" data-download-dialog aria-labelledby="download-dialog-title">
+      <form class="beta-access-form" method="dialog" data-beta-access-form>
+        <div class="dialog-heading">
+          <p class="kicker">Beta download</p>
+          <h2 id="download-dialog-title">Download TapPad</h2>
+          <p>Tell us where TapPad fits. After this, your download will start automatically.</p>
+        </div>
+        <label>
+          <span>Email</span>
+          <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+        </label>
+        <label>
+          <span>What do you want to use TapPad for?</span>
+          <textarea
+            name="useCase"
+            rows="4"
+            minlength="8"
+            placeholder="Control my computer from the sofa, type from my phone..."
+            required
+          ></textarea>
+        </label>
+        <div class="dialog-actions">
+          <button class="secondary-action" type="button" data-dialog-close>Cancel</button>
+          <button class="primary-action" type="submit" data-download-confirm>Continue to download</button>
+        </div>
+        <p class="form-status" data-beta-access-status role="status" aria-live="polite"></p>
+      </form>
+    </dialog>
+
+    <script src="./script.js?v=download-button-1"></script>
   </body>
 </html>

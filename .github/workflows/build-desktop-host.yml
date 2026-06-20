@@ -250,6 +250,9 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Download package artifacts
         uses: actions/download-artifact@v8
         with:
@@ -288,6 +291,7 @@ jobs:
           find release-files -maxdepth 1 -type f -print | sort
 
       - name: Publish GitHub pre-release
+        id: publish_release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -297,6 +301,7 @@ jobs:
           timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
           short_sha="${GITHUB_SHA::7}"
           tag="main-${timestamp}-${short_sha}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
           cat > release-notes.md <<NOTES
           Automated TapPad main build.
@@ -311,3 +316,30 @@ jobs:
             --title "TapPad main ${timestamp} ${short_sha}" \
             --notes-file release-notes.md \
             --prerelease
+
+      - name: Sync release files to Cloudflare R2
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TAPPAD_DOWNLOAD_BASE_URL: ${{ vars.TAPPAD_DOWNLOAD_BASE_URL }}
+          TAPPAD_R2_BUCKET: ${{ vars.TAPPAD_R2_BUCKET }}
+          TAPPAD_RELEASE_TAG: ${{ steps.publish_release.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ] \
+            || [ -z "${CLOUDFLARE_API_TOKEN:-}" ] \
+            || [ -z "${TAPPAD_DOWNLOAD_BASE_URL:-}" ] \
+            || [ -z "${TAPPAD_R2_BUCKET:-}" ]; then
+            echo "Cloudflare R2 publishing is not configured; skipping."
+            exit 0
+          fi
+
+          node scripts/build-download-manifest.mjs release-files release-files/downloads.json
+
+          for file in release-files/*; do
+            base_name="$(basename "$file")"
+            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/releases/$TAPPAD_RELEASE_TAG/$base_name" --file="$file"
+            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/latest/$base_name" --file="$file"
+          done
