@@ -5,8 +5,9 @@
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
-    "build": "tauri build",
-    "build:locked": "tauri build -- --locked"
+    "build": "NO_STRIP=1 tauri build",
+    "build:appimage": "NO_STRIP=1 tauri build -- --bundles appimage",
+    "build:locked": "NO_STRIP=1 tauri build -- --locked"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.2"

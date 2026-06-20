@@ -220,9 +220,6 @@ private func macActionCapabilitiesJSON() -> String {
         "app_launcher": [
             "state": "supported",
         ],
-        "nightlight.toggle": [
-            "state": "hidden",
-        ],
         "lock_screen": [
             "state": "supported",
         ],

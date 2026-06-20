@@ -24,7 +24,6 @@ The current cross-platform action parity set is:
 - `screenshot`
 - `close_window`
 - `app_launcher`
-- `nightlight.toggle`
 - `lock_screen`
 - `media.prev`
 - `media.play_pause`
@@ -51,7 +50,7 @@ Screen recordings should be saved to a TapPad folder inside the platform's stand
 
 ## Recording Semantics
 
-`screenrecord.window` records the currently active window without showing a picker. If the target backend cannot identify or capture the active window, it may fall back to recording the current screen and should surface that fallback to the user.
+`screenrecord.window` records the currently active window without showing a picker. Mobile-triggered recording controls should avoid desktop-side picker flows because the user may not be at the desktop input device. If the target backend cannot identify or capture the active window, it may fall back to recording the current screen and should surface that fallback to the user.
 
 `screenrecord.screen.audio` records the current screen with both system output audio and microphone input audio. If a target backend can only capture one audio source, it should surface that capability downgrade to the user.
 
@@ -62,5 +61,3 @@ Only one TapPad recording session may be active at a time. `screenrecord.stop` s
 `close_window` closes the currently active window using the platform-standard close-window behavior. It should not force-quit an application or close TapPad itself as a destructive fallback.
 
 `app_launcher` opens the platform's search-style application launcher so the user can type an app or command name. Examples include Spotlight on macOS, Start/Search on Windows, and Walker on Omarchy/Linux.
-
-`nightlight.toggle` toggles the platform's system-level night color or eye-comfort mode. It should not be implemented as a TapPad-specific screen filter.

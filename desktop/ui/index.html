@@ -222,13 +222,17 @@
       .badge[data-state="manual"],
       .badge[data-state="degraded"],
       .badge[data-state="downgraded"],
-      .badge[data-state="disabled"] {
+      .badge[data-state="disabled"],
+      .badge[data-state="missing_dependency"],
+      .badge[data-state="permission_needed"],
+      .badge[data-state="unknown"] {
         color: var(--warn);
         background: #f4ebd6;
       }
 
       .badge[data-state="stopped"],
-      .badge[data-state="error"] {
+      .badge[data-state="error"],
+      .badge[data-state="failed"] {
         color: var(--danger);
         background: #f5ded9;
       }
@@ -354,6 +358,36 @@
       .action-item strong {
         display: block;
         margin-bottom: 8px;
+      }
+
+      .diagnostics-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .diagnostics-header h2 {
+        margin-bottom: 0;
+      }
+
+      .diagnostic-group + .diagnostic-group {
+        margin-top: 16px;
+      }
+
+      .diagnostic-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .diagnostic-meta span {
+        border-radius: 999px;
+        padding: 3px 7px;
+        color: var(--muted);
+        background: var(--secondary);
+        font-size: 11px;
       }
 
       #statusText {
@@ -533,8 +567,7 @@
             <summary>Diagnostics</summary>
             <div class="advanced-content">
               <section class="advanced-section">${serverDiagnostics(state)}</section>
-              <section class="advanced-section">${readinessDiagnostics(state)}</section>
-              <section class="advanced-section">${actionDiagnostics(state)}</section>
+              <section class="advanced-section">${diagnosticsMatrix(state)}</section>
             </div>
           </details>
         `;
@@ -548,6 +581,10 @@
         });
 
         document.getElementById("resetToken").addEventListener("click", resetToken);
+        document.getElementById("copyDiagnostics")?.addEventListener("click", async () => {
+          await copyText(state.diagnostics?.copyText || "");
+          setStatus("Diagnostics copied");
+        });
       }
 
       function readinessDiagnostics(state) {
@@ -583,6 +620,58 @@
               )
               .join("")}
           </div>
+        `;
+      }
+
+      function diagnosticsMatrix(state) {
+        const capabilities = (state.diagnostics?.capabilities || []).filter(
+          (capability) => capability.productStatus !== "unsupported",
+        );
+        const groups = new Map();
+        capabilities.forEach((capability) => {
+          if (!groups.has(capability.group)) groups.set(capability.group, []);
+          groups.get(capability.group).push(capability);
+        });
+        return `
+          <div class="diagnostics-header">
+            <h2>Diagnostics</h2>
+            <button class="secondary" type="button" id="copyDiagnostics">Copy diagnostics</button>
+          </div>
+          ${Array.from(groups.entries())
+            .map(
+              ([group, items]) => `
+                <section class="diagnostic-group">
+                  <h3>${escapeHtml(group)}</h3>
+                  <ul>${items.map(diagnosticLine).join("")}</ul>
+                </section>
+              `,
+            )
+            .join("")}
+        `;
+      }
+
+      function diagnosticLine(capability) {
+        const evidence = capability.evidence?.length
+          ? capability.evidence.map((item) => `<p class="note">${escapeHtml(item)}</p>`).join("")
+          : "";
+        const attempt = [
+          capability.lastAttemptAt ? `Last attempt ${capability.lastAttemptAt}` : "",
+          capability.lastSuccessAt ? `Last success ${capability.lastSuccessAt}` : "",
+          capability.lastFailureAt ? `Last failure ${capability.lastFailureAt}` : "",
+        ].filter(Boolean);
+        return `
+          <li class="line">
+            <div>
+              <strong>${escapeHtml(capability.label)}</strong>
+              ${evidence}
+              ${capability.lastFailureSummary ? `<p class="note">${escapeHtml(capability.lastFailureSummary)}</p>` : ""}
+              <div class="diagnostic-meta">
+                <span>Product ${escapeHtml(capability.productStatus)}</span>
+                ${attempt.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+              </div>
+            </div>
+            ${badge(capability.runtimeStatus)}
+          </li>
         `;
       }
 
