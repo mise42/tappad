@@ -4,6 +4,7 @@ const pad = document.getElementById("pad");
 const textInput = document.getElementById("textInput");
 const sendTextButton = document.getElementById("sendText");
 const releaseAllButton = document.getElementById("releaseAll");
+const rootStyle = document.documentElement.style;
 
 const query = new URLSearchParams(window.location.search);
 const actionCapabilities = window.__TAPPAD_ACTIONS__ || {};
@@ -22,6 +23,59 @@ let pendingWheel = 0;
 let wheelFlushTimer = null;
 let lastWheelTime = 0;
 const WHEEL_INTERVAL = 24;
+const KEYBOARD_SHRINK_THRESHOLD = 90;
+let viewportBaseline = { width: 0, height: 0 };
+
+function isTextEntryActive() {
+  return document.activeElement === textInput;
+}
+
+function currentViewportSize() {
+  const viewport = window.visualViewport;
+  return {
+    width: Math.round(viewport?.width || window.innerWidth),
+    height: Math.round(viewport?.height || window.innerHeight),
+  };
+}
+
+function updateViewportBaseline(width, height) {
+  const widthChanged = Math.abs(width - viewportBaseline.width) > 48;
+  if (!viewportBaseline.height || widthChanged || height > viewportBaseline.height) {
+    viewportBaseline = { width, height };
+  }
+}
+
+function isViewportCompressed(height) {
+  return viewportBaseline.height - height >= KEYBOARD_SHRINK_THRESHOLD;
+}
+
+function resizeTextInput() {
+  const isCompressed = document.body.dataset.textEntry === "active";
+  const viewportHeight = currentViewportSize().height;
+  const minHeight = isCompressed ? 70 : 50;
+  const maxHeight = isCompressed ? 92 : Math.min(190, Math.max(92, Math.round(viewportHeight * 0.34)));
+  textInput.style.height = "auto";
+  textInput.style.height = `${Math.min(Math.max(textInput.scrollHeight, minHeight), maxHeight)}px`;
+}
+
+function updateViewportSize() {
+  const { width, height } = currentViewportSize();
+  updateViewportBaseline(width, height);
+  rootStyle.setProperty("--app-height", `${Math.round(height)}px`);
+  document.body.dataset.textEntry =
+    isTextEntryActive() && isViewportCompressed(height) ? "active" : "inactive";
+  resizeTextInput();
+}
+
+function keepTextInputVisible() {
+  updateViewportSize();
+  requestAnimationFrame(() => {
+    updateViewportSize();
+    if (document.body.dataset.textEntry === "active") {
+      textInput.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  });
+}
 
 function socketUrl() {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -232,6 +286,7 @@ sendTextButton.addEventListener("click", () => {
   if (!value.trim()) return;
   send({ type: "text", value });
   textInput.value = "";
+  resizeTextInput();
 });
 
 textInput.addEventListener("keydown", (event) => {
@@ -239,6 +294,12 @@ textInput.addEventListener("keydown", (event) => {
     event.preventDefault();
     sendTextButton.click();
   }
+});
+
+textInput.addEventListener("focus", keepTextInputVisible);
+textInput.addEventListener("input", keepTextInputVisible);
+textInput.addEventListener("blur", () => {
+  requestAnimationFrame(updateViewportSize);
 });
 
 // Tab switching
@@ -304,6 +365,11 @@ document.querySelectorAll("[data-cmd]").forEach((button) => {
 });
 
 reconnectButton.addEventListener("click", connect);
+window.addEventListener("resize", updateViewportSize);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", updateViewportSize);
+  window.visualViewport.addEventListener("scroll", updateViewportSize);
+}
 window.addEventListener("pagehide", () => {
   clearPendingTap();
   releaseAllKeys();
@@ -315,6 +381,7 @@ window.addEventListener("visibilitychange", () => {
     releaseAllKeys();
   }
 });
+updateViewportSize();
 connect();
 
 if ("serviceWorker" in navigator) {
