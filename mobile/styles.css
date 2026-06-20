@@ -39,7 +39,7 @@ textarea {
 }
 
 .shell {
-  height: 100svh;
+  height: var(--app-height, 100svh);
   max-width: 980px;
   margin: 0 auto;
   display: grid;
@@ -184,6 +184,10 @@ button.pressed {
   gap: 10px;
 }
 
+body[data-text-entry="active"] #panel-main {
+  grid-template-rows: minmax(88px, 0.42fr) auto;
+}
+
 .pad {
   position: relative;
   min-height: 260px;
@@ -197,6 +201,14 @@ button.pressed {
   background-size: auto, 34px 34px, 34px 34px, auto;
   overflow: hidden;
   touch-action: none;
+}
+
+body[data-text-entry="active"] .pad {
+  min-height: 88px;
+}
+
+body[data-text-entry="active"] .pad::after {
+  inset: 10px;
 }
 
 .pad::after {
@@ -223,10 +235,24 @@ button.pressed {
   pointer-events: none;
 }
 
+body[data-text-entry="active"] .pad-hint {
+  left: 14px;
+  bottom: 12px;
+  gap: 4px;
+}
+
 .pad-hint strong {
   font-size: 26px;
   line-height: 1;
   letter-spacing: 0;
+}
+
+body[data-text-entry="active"] .pad-hint strong {
+  font-size: 16px;
+}
+
+body[data-text-entry="active"] .pad-hint span {
+  font-size: 11px;
 }
 
 .pad-hint span {
@@ -237,6 +263,12 @@ button.pressed {
 .bottom-bar {
   display: grid;
   gap: 8px;
+  scroll-margin-bottom: max(20px, env(safe-area-inset-bottom));
+}
+
+body[data-text-entry="active"] .bottom-bar {
+  position: relative;
+  z-index: 2;
 }
 
 .paste-row {
@@ -248,7 +280,7 @@ button.pressed {
 textarea {
   width: 100%;
   min-height: 50px;
-  max-height: 92px;
+  max-height: min(190px, 34svh);
   resize: none;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -256,10 +288,16 @@ textarea {
   color: var(--text);
   background: var(--panel);
   outline: none;
+  overflow-y: auto;
 }
 
 textarea:focus {
   border-color: rgba(110, 231, 183, 0.48);
+}
+
+body[data-text-entry="active"] textarea {
+  min-height: 70px;
+  max-height: 92px;
 }
 
 #sendText {
@@ -412,12 +450,47 @@ textarea:focus {
     min-height: 0;
   }
 
+  body[data-text-entry="active"] .pad {
+    min-height: 64px;
+  }
+
   .keys {
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   .media-grid {
     padding: 12px 0;
+  }
+}
+
+@media (max-height: 540px) {
+  .shell {
+    gap: 8px;
+    padding:
+      max(8px, env(safe-area-inset-top))
+      max(10px, env(safe-area-inset-right))
+      max(8px, env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left));
+  }
+
+  .topbar {
+    align-items: flex-start;
+  }
+
+  h1 {
+    font-size: 19px;
+  }
+
+  #status {
+    min-height: 22px;
+  }
+
+  .tab-btn {
+    min-height: 34px;
+  }
+
+  .primary-keys button {
+    min-height: 42px;
   }
 }
 

@@ -12,10 +12,13 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "TapPad Desktop Host",
-        "width": 920,
-        "height": 720,
-        "resizable": true
+        "title": "TapPad",
+        "width": 520,
+        "height": 680,
+        "center": true,
+        "resizable": false,
+        "maximizable": false,
+        "hiddenTitle": true
       }
     ],
     "security": {

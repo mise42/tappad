@@ -399,7 +399,6 @@
       </nav>
       <section class="pairing-window view" id="pairingView"></section>
       <section class="pairing-window view" id="settingsView" hidden></section>
-      <p id="statusText" role="status"></p>
     </main>
 
     <script>
@@ -431,13 +430,13 @@
 
       function setStatus(message, kind = "note") {
         const status = document.getElementById("statusText");
+        if (!status) return;
         status.textContent = message;
         status.dataset.kind = kind;
       }
 
       async function copyText(value) {
         await navigator.clipboard.writeText(value);
-        setStatus("Copied");
       }
 
       function normalizeView(view) {
@@ -527,6 +526,7 @@
               <button type="submit">Save</button>
               <button class="secondary" type="button" id="resetToken">Reset Token</button>
             </div>
+            <p id="statusText" role="status"></p>
             <p class="note">${escapeHtml(settings.launchAtLogin.note || "")}</p>
           </form>
           <details class="advanced" ${server.running ? "" : "open"}>
@@ -606,8 +606,8 @@
           render(await invoke("save_settings", settings));
           setStatus(currentState.serverStatus.running ? "Saved and restarted" : "Saved");
         } catch (error) {
-          setStatus(String(error), "error");
           render(currentState);
+          setStatus(String(error), "error");
         }
       }
 
