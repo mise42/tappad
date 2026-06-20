@@ -47,4 +47,14 @@ The workflow writes each build to:
 - `latest/<file>`
 - `latest/downloads.json`
 
+Manual workflow runs support two paths:
+
+```bash
+# Build packages, publish a new GitHub pre-release, and sync it to R2.
+gh workflow run build-desktop-host.yml --ref main
+
+# Sync an existing GitHub release to R2 without rebuilding packages.
+gh workflow run build-desktop-host.yml --ref main -f release_tag=main-20260620T104052Z-2cea3f5
+```
+
 The Landing page only receives the final download link after the visitor submits the dialog, so public download URL shape can change without editing the static HTML.

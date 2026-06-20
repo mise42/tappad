@@ -2,6 +2,11 @@ name: Build TapPad Packages
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing GitHub release tag to sync to R2. Leave empty to build and publish a new pre-release."
+        required: false
+        type: string
   push:
     branches:
       - main
@@ -31,6 +36,7 @@ permissions:
 jobs:
   checks:
     name: Checks
+    if: github.event_name != 'workflow_dispatch' || inputs.release_tag == ''
     runs-on: ubuntu-latest
 
     steps:
@@ -73,7 +79,7 @@ jobs:
 
   desktop-windows:
     name: Desktop Host Windows
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release_tag == ''))
     runs-on: windows-latest
 
     defaults:
@@ -118,7 +124,7 @@ jobs:
 
   desktop-linux:
     name: Desktop Host Linux
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release_tag == ''))
     runs-on: ubuntu-latest
 
     defaults:
@@ -174,7 +180,7 @@ jobs:
 
   desktop-macos:
     name: Tauri macOS Desktop Host
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release_tag == ''))
     runs-on: macos-latest
 
     defaults:
@@ -217,7 +223,7 @@ jobs:
 
   macos-native:
     name: Native macOS
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release_tag == ''))
     runs-on: macos-latest
 
     steps:
@@ -238,7 +244,7 @@ jobs:
 
   publish-main-prerelease:
     name: Publish Main Pre-release
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release_tag == ''))
     runs-on: ubuntu-latest
     needs:
       - checks
@@ -334,6 +340,60 @@ jobs:
             || [ -z "${TAPPAD_R2_BUCKET:-}" ]; then
             echo "Cloudflare R2 publishing is not configured; skipping."
             exit 0
+          fi
+
+          node scripts/build-download-manifest.mjs release-files release-files/downloads.json
+
+          for file in release-files/*; do
+            base_name="$(basename "$file")"
+            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/releases/$TAPPAD_RELEASE_TAG/$base_name" --file="$file"
+            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/latest/$base_name" --file="$file"
+          done
+
+  sync-existing-release-to-r2:
+    name: Sync Existing Release to R2
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download GitHub release files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAPPAD_RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p release-files
+          gh release download "$TAPPAD_RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir release-files
+
+          test -n "$(find release-files -type f -print -quit)"
+          find release-files -maxdepth 1 -type f -print | sort
+
+      - name: Sync release files to Cloudflare R2
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TAPPAD_DOWNLOAD_BASE_URL: ${{ vars.TAPPAD_DOWNLOAD_BASE_URL }}
+          TAPPAD_R2_BUCKET: ${{ vars.TAPPAD_R2_BUCKET }}
+          TAPPAD_RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ] \
+            || [ -z "${CLOUDFLARE_API_TOKEN:-}" ] \
+            || [ -z "${TAPPAD_DOWNLOAD_BASE_URL:-}" ] \
+            || [ -z "${TAPPAD_R2_BUCKET:-}" ]; then
+            echo "Cloudflare R2 publishing is not configured."
+            exit 1
           fi
 
           node scripts/build-download-manifest.mjs release-files release-files/downloads.json
