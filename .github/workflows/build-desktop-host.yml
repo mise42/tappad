@@ -346,8 +346,8 @@ jobs:
 
           for file in release-files/*; do
             base_name="$(basename "$file")"
-            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/releases/$TAPPAD_RELEASE_TAG/$base_name" --file="$file"
-            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/latest/$base_name" --file="$file"
+            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/releases/$TAPPAD_RELEASE_TAG/$base_name" --file="$file" --remote
+            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/latest/$base_name" --file="$file" --remote
           done
 
   sync-existing-release-to-r2:
@@ -400,6 +400,6 @@ jobs:
 
           for file in release-files/*; do
             base_name="$(basename "$file")"
-            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/releases/$TAPPAD_RELEASE_TAG/$base_name" --file="$file"
-            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/latest/$base_name" --file="$file"
+            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/releases/$TAPPAD_RELEASE_TAG/$base_name" --file="$file" --remote
+            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/latest/$base_name" --file="$file" --remote
           done
