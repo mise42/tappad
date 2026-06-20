@@ -25,6 +25,7 @@ let lastWheelTime = 0;
 const WHEEL_INTERVAL = 24;
 const KEYBOARD_SHRINK_THRESHOLD = 90;
 let viewportBaseline = { width: 0, height: 0 };
+let lastViewportSize = { width: 0, height: 0 };
 
 function isTextEntryActive() {
   return document.activeElement === textInput;
@@ -40,6 +41,17 @@ function currentViewportSize() {
 
 function updateViewportBaseline(width, height) {
   const widthChanged = Math.abs(width - viewportBaseline.width) > 48;
+  const wasCompressed = document.body.dataset.textEntry === "active";
+  const expandedSinceLast =
+    lastViewportSize.height && height - lastViewportSize.height >= KEYBOARD_SHRINK_THRESHOLD;
+  if (
+    widthChanged &&
+    isTextEntryActive() &&
+    wasCompressed &&
+    !expandedSinceLast
+  ) {
+    return;
+  }
   if (!viewportBaseline.height || widthChanged || height > viewportBaseline.height) {
     viewportBaseline = { width, height };
   }
@@ -65,6 +77,7 @@ function updateViewportSize() {
   document.body.dataset.textEntry =
     isTextEntryActive() && isViewportCompressed(height) ? "active" : "inactive";
   resizeTextInput();
+  lastViewportSize = { width, height };
 }
 
 function keepTextInputVisible() {
