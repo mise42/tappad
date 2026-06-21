@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
+use log::warn;
 use tauri::{
     App, AppHandle, Emitter, Manager, Runtime, Window, WindowEvent,
     menu::{MenuBuilder, MenuEvent, MenuItem, MenuItemBuilder},
     tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent},
 };
 use tauri_plugin_notification::NotificationExt;
-use tracing::warn;
 
 use crate::{
     backend_controller::BackendController,

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'touchpad-v9';
+const CACHE_NAME = 'touchpad-v10';
 const PRECACHE = ['/', '/index.html', '/styles.css', '/app.js'];
 
 self.addEventListener('install', (event) => {

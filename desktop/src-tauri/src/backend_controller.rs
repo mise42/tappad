@@ -1,12 +1,13 @@
 use std::{path::PathBuf, sync::Arc};
 
+use log::warn;
 use tauri::AppHandle;
 use tauri_plugin_autostart::ManagerExt;
 use tokio::sync::Mutex;
-use tracing::warn;
 
 use crate::{
     backend::{self, BackendRuntime, RunningBackend},
+    diagnostics::input_device_probe,
     host_surface::{HostSurfaceState, host_surface_state},
     settings::{RuntimeSettings, SettingsUpdate, persist_settings},
 };
@@ -19,6 +20,20 @@ pub struct BackendController {
 struct ControllerState {
     settings: RuntimeSettings,
     backend: BackendState,
+    input_probe: InputProbe,
+}
+
+#[derive(Debug, Clone)]
+struct InputProbe {
+    ready: bool,
+    error: Option<String>,
+}
+
+impl InputProbe {
+    fn current() -> Self {
+        let (ready, error) = input_device_probe();
+        Self { ready, error }
+    }
 }
 
 enum BackendState {
@@ -32,6 +47,7 @@ impl BackendController {
         launch_at_login: bool,
     ) -> Result<Arc<Self>, Box<dyn std::error::Error + Send + Sync>> {
         let settings = RuntimeSettings::from_store(&data_dir, launch_at_login)?;
+        let input_probe = InputProbe::current();
         let backend = match start_backend(settings.clone()).await {
             Ok(running) => BackendState::Running(running),
             Err(error) => {
@@ -42,7 +58,11 @@ impl BackendController {
         };
         Ok(Arc::new(Self {
             data_dir,
-            inner: Mutex::new(ControllerState { settings, backend }),
+            inner: Mutex::new(ControllerState {
+                settings,
+                backend,
+                input_probe,
+            }),
         }))
     }
 
@@ -108,6 +128,7 @@ impl BackendController {
                 }
                 inner.settings = next;
                 inner.backend = BackendState::Stopped { reason };
+                inner.input_probe = InputProbe::current();
                 return Ok(());
             }
         };
@@ -123,6 +144,7 @@ impl BackendController {
 
         let previous = std::mem::replace(&mut inner.backend, BackendState::Running(next_running));
         inner.settings = next;
+        inner.input_probe = InputProbe::current();
         previous.shutdown();
         Ok(())
     }
@@ -135,6 +157,8 @@ impl ControllerState {
             self.backend.is_running(),
             self.backend.reason(),
             true,
+            self.input_probe.ready,
+            self.input_probe.error.clone(),
         )
     }
 }

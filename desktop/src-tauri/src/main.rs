@@ -6,6 +6,7 @@
 mod actions;
 mod backend;
 mod backend_controller;
+mod diagnostics;
 mod host_surface;
 mod input;
 mod input_chord;
@@ -18,9 +19,10 @@ use std::sync::Arc;
 
 use backend_controller::{BackendController, launch_at_login_enabled};
 use host_surface::HostSurfaceState;
+use log::warn;
 use settings::SettingsUpdate;
 use tauri::{AppHandle, Manager, State};
-use tracing::warn;
+use tauri_plugin_log::{Target, TargetKind};
 
 #[tauri::command]
 async fn host_state(
@@ -69,9 +71,13 @@ async fn reset_pairing_token(
 }
 
 fn main() {
-    tracing_subscriber::fmt::init();
-
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .target(Target::new(TargetKind::Stdout))
+                .target(Target::new(TargetKind::LogDir { file_name: None }))
+                .build(),
+        )
         .plugin(
             tauri_plugin_autostart::Builder::new()
                 .app_name("TapPad")

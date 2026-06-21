@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 use crate::{
     actions::{CapabilityStatus, action_capabilities, capability},
+    diagnostics::{DiagnosticsSummary, diagnostics_summary},
     settings::RuntimeSettings,
 };
 
@@ -66,6 +67,7 @@ pub struct HostSurfaceState {
     pub readiness: Vec<ReadinessGroup>,
     pub settings: SettingsSummary,
     pub actions: BTreeMap<String, CapabilityStatus>,
+    pub diagnostics: DiagnosticsSummary,
 }
 
 pub fn host_surface_state(
@@ -73,7 +75,16 @@ pub fn host_surface_state(
     backend_running: bool,
     backend_reason: Option<String>,
     include_pairing_token: bool,
+    input_ready: bool,
+    input_error: Option<String>,
 ) -> HostSurfaceState {
+    let diagnostics = diagnostics_summary(
+        settings,
+        backend_running,
+        backend_reason.as_deref(),
+        input_ready,
+        input_error.as_deref(),
+    );
     HostSurfaceState {
         pairing: pairing_links(settings, include_pairing_token),
         server_status: ServerStatus {
@@ -98,6 +109,7 @@ pub fn host_surface_state(
             ),
         },
         actions: action_capabilities(),
+        diagnostics,
     }
 }
 
@@ -154,7 +166,6 @@ fn readiness_groups() -> Vec<ReadinessGroup> {
                     readiness("Recording", "ready", None),
                     readiness("Audio capture", "ready", None),
                     readiness("Window control", "ready", None),
-                    readiness("Night Light", "ready", None),
                     readiness("Media control", "ready", None),
                 ],
             },
@@ -198,11 +209,6 @@ fn readiness_groups() -> Vec<ReadinessGroup> {
                         ),
                     ),
                     readiness("Window control", "ready", None),
-                    readiness(
-                        "Night Light",
-                        "degraded",
-                        Some("TapPad opens Night light settings instead of toggling immediately."),
-                    ),
                     readiness("Media control", "ready", None),
                 ],
             },
@@ -278,7 +284,7 @@ mod tests {
 
     #[test]
     fn tauri_state_includes_pairing_token() {
-        let state = host_surface_state(&test_settings(), true, None, true);
+        let state = host_surface_state(&test_settings(), true, None, true, true, None);
 
         assert_eq!(state.pairing.token.as_deref(), Some("pair-token"));
         assert_eq!(
@@ -296,7 +302,7 @@ mod tests {
 
     #[test]
     fn http_state_is_sanitized() {
-        let state = host_surface_state(&test_settings(), true, None, false);
+        let state = host_surface_state(&test_settings(), true, None, false, true, None);
 
         assert!(state.pairing.token.is_none());
         assert_eq!(state.pairing.preferred_url, "http://desktop:8765/");
@@ -310,6 +316,8 @@ mod tests {
             false,
             Some("port 8765 is already in use".to_string()),
             true,
+            true,
+            None,
         );
 
         assert!(!state.server_status.running);

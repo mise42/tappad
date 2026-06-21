@@ -324,6 +324,16 @@ body[data-text-entry="active"] textarea {
   padding-bottom: 4px;
 }
 
+.panel-heading {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 .keys {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -413,8 +423,13 @@ body[data-text-entry="active"] textarea {
 .cmd-rec-btn span,
 .cmd-stop-btn span,
 .cmd-folder-btn span {
+  max-width: 100%;
+  padding: 0 6px;
   color: var(--muted);
   font-size: 11px;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
   pointer-events: none;
 }
 

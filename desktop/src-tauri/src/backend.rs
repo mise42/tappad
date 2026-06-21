@@ -10,6 +10,7 @@ use axum::{
     routing::get,
 };
 use include_dir::{Dir, include_dir};
+use log::{info, warn};
 use std::{
     io,
     net::SocketAddr,
@@ -20,10 +21,10 @@ use std::{
 };
 use tokio::{net::TcpListener, sync::Mutex, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
 
 use crate::{
     actions::{action_capabilities, run_named_action},
+    diagnostics::{record_action_attempt, record_action_failure, record_action_success},
     host_surface::{HostSurfaceState, host_surface_state, render_mobile_index},
     input::InputDevice,
     protocol::{ClientMessage, ServerMessage},
@@ -102,7 +103,14 @@ pub async fn bind(settings: &RuntimeSettings) -> io::Result<TcpListener> {
 }
 
 async fn api_host_state(State(state): State<Arc<BackendRuntime>>) -> Json<HostSurfaceState> {
-    Json(host_surface_state(state.settings(), true, None, false))
+    Json(host_surface_state(
+        state.settings(),
+        true,
+        None,
+        false,
+        true,
+        None,
+    ))
 }
 
 async fn ws_handler(
@@ -203,9 +211,14 @@ async fn apply_backend_effect(state: Arc<BackendRuntime>, client_id: &str, effec
             let input = state.input.clone();
             let client_id = client_id.to_string();
             tokio::spawn(async move {
-                if let Err(error) = run_named_action(input, &action).await {
-                    warn!("cmd failed for {client_id} ({action}): {error}");
-                }
+                record_action_attempt(&action);
+                match run_named_action(input, &action).await {
+                    Ok(()) => record_action_success(&action),
+                    Err(error) => {
+                        record_action_failure(&action, &error.to_string());
+                        warn!("cmd failed for {client_id} ({action}): {error}");
+                    }
+                };
             });
         }
     }

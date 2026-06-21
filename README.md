@@ -65,5 +65,5 @@ The mobile protocol accepts named Desktop Action ids through `cmd` messages.
 Arbitrary shell-command messages are not part of the product protocol.
 
 Linux/Omarchy actions include screenshot, screen recording, media controls,
-window close, launcher, lock, and night light. Windows exposes the same action
+window close, launcher, and lock. Windows exposes the same action
 ids with explicit downgraded states where native capture work has not shipped.
