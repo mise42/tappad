@@ -275,6 +275,7 @@ mod tests {
             bind_host: "0.0.0.0".to_string(),
             port: 8765,
             token: "pair-token".to_string(),
+            host_id: "host-id".to_string(),
             hostname: "desktop".to_string(),
             launch_at_login: true,
             close_to_tray_hint_shown: false,
@@ -289,7 +290,7 @@ mod tests {
         assert_eq!(state.pairing.token.as_deref(), Some("pair-token"));
         assert_eq!(
             state.pairing.preferred_url,
-            "http://desktop:8765/?token=pair-token"
+            "http://tappad-host-id.local:8765/?token=pair-token"
         );
         assert!(
             state
@@ -305,7 +306,10 @@ mod tests {
         let state = host_surface_state(&test_settings(), true, None, false, true, None);
 
         assert!(state.pairing.token.is_none());
-        assert_eq!(state.pairing.preferred_url, "http://desktop:8765/");
+        assert_eq!(
+            state.pairing.preferred_url,
+            "http://tappad-host-id.local:8765/"
+        );
         assert!(state.server_status.token_enabled);
     }
 

@@ -11,7 +11,7 @@ use enigo::{
 use crate::input_chord::chord_sequence;
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-use tracing::warn;
+use log::warn;
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub struct InputDevice {

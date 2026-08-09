@@ -7,8 +7,11 @@ A mobile input surface for controlling a desktop machine from a phone or tablet.
 ## Core language
 
 **Mobile Input Surface**:
-The browser-based control surface that turns a phone or tablet into an input peripheral for a desktop machine.
+The control surface that turns a phone or tablet into an input peripheral for a desktop machine. It may be delivered through the host-served web UI or the native TapPad Mobile App.
 TapPad is a mobile input surface, not a remote desktop.
+
+**TapPad Mobile App**:
+The native phone and tablet shell that discovers nearby Desktop Host Surfaces, retains Paired Device credentials, and presents the Mobile Input Surface.
 
 **Desktop Host Surface**:
 The target-desktop interface that helps a user start TapPad, pair a mobile device, inspect connection status, grant permissions, and change local settings.
@@ -43,6 +46,20 @@ A concrete situation where a first buyer reaches for TapPad, such as vibe coding
 
 **Desktop Action**:
 An intentional action requested by the mobile input surface, such as taking a screenshot, changing workspace, or controlling media playback.
+
+## Connection and trust
+
+**Stable Host Name**:
+The known local name a user opens to reach one Desktop Host Surface. It provides a route to a host; it is neither host discovery nor proof that the connecting device is trusted.
+
+**Device Authorization**:
+The first-use trust decision that allows a mobile device to control a Desktop Host Surface. Local-network reachability alone never grants authorization.
+
+**Paired Device**:
+A mobile device that has completed Device Authorization and retained its device credential for later automatic reconnection. Pairing lasts until the credential is revoked, forgotten, or replaced.
+
+**Nearby Host Discovery**:
+The native-app capability that lists Desktop Host Surfaces advertising TapPad on the current local network. Discovery supplies connection candidates; it does not authorize control.
 
 ## Input paths
 

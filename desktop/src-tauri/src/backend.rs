@@ -25,6 +25,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     actions::{action_capabilities, run_named_action},
     diagnostics::{record_action_attempt, record_action_failure, record_action_success},
+    discovery,
     host_surface::{HostSurfaceState, host_surface_state, render_mobile_index},
     input::InputDevice,
     protocol::{ClientMessage, ServerMessage},
@@ -74,6 +75,13 @@ pub fn spawn(
     let shutdown = CancellationToken::new();
     let shutdown_for_task = shutdown.clone();
     let state = Arc::new(runtime);
+    let discovery = match discovery::publish(state.settings()) {
+        Ok(discovery) => Some(discovery),
+        Err(error) => {
+            warn!("TapPad mDNS publication unavailable: {error}");
+            None
+        }
+    };
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
@@ -89,6 +97,12 @@ pub fn spawn(
 
         if let Err(error) = result {
             warn!("TapPad backend stopped with error: {error}");
+        }
+
+        if let Some(discovery) = discovery {
+            if let Err(error) = discovery.shutdown() {
+                warn!("TapPad mDNS shutdown failed: {error}");
+            }
         }
     });
 

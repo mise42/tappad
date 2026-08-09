@@ -13,6 +13,7 @@ pub struct RuntimeSettings {
     pub bind_host: String,
     pub port: u16,
     pub token: String,
+    pub host_id: String,
     pub hostname: String,
     pub launch_at_login: bool,
     pub close_to_tray_hint_shown: bool,
@@ -33,6 +34,8 @@ pub struct SettingsUpdate {
 struct StoredSettings {
     port: u16,
     token: String,
+    #[serde(default)]
+    host_id: String,
     launch_at_login: bool,
     #[serde(default)]
     close_to_tray_hint_shown: bool,
@@ -45,6 +48,7 @@ impl RuntimeSettings {
             bind_host: "0.0.0.0".to_string(),
             port: stored.port,
             token: stored.token,
+            host_id: stored.host_id,
             hostname: hostname(),
             launch_at_login,
             close_to_tray_hint_shown: stored.close_to_tray_hint_shown,
@@ -59,6 +63,7 @@ impl RuntimeSettings {
             bind_host: "0.0.0.0".to_string(),
             port: update.port,
             token,
+            host_id: self.host_id.clone(),
             hostname: self.hostname.clone(),
             launch_at_login: update.launch_at_login,
             close_to_tray_hint_shown: self.close_to_tray_hint_shown,
@@ -82,10 +87,33 @@ impl RuntimeSettings {
 
     pub fn local_url(&self, include_token: bool) -> String {
         control_url(
-            &self.hostname,
+            self.mdns_hostname().trim_end_matches('.'),
             self.port,
             include_token.then_some(&self.token),
         )
+    }
+
+    pub fn mdns_hostname(&self) -> String {
+        let short_id: String = self
+            .host_id
+            .chars()
+            .take(8)
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || ch == '-' {
+                    ch.to_ascii_lowercase()
+                } else {
+                    'x'
+                }
+            })
+            .collect();
+        let short_id = if short_id.ends_with('-') {
+            format!("{short_id}x")
+        } else if short_id.is_empty() {
+            "unknown".to_string()
+        } else {
+            short_id
+        };
+        format!("tappad-{short_id}.local.")
     }
 
     pub fn lan_url(&self, include_token: bool) -> Option<String> {
@@ -104,6 +132,7 @@ pub fn persist_settings(data_dir: &Path, settings: &RuntimeSettings) -> io::Resu
     let stored = StoredSettings {
         port: settings.port,
         token: settings.token.clone(),
+        host_id: settings.host_id.clone(),
         launch_at_login: settings.launch_at_login,
         close_to_tray_hint_shown: settings.close_to_tray_hint_shown,
     };
@@ -119,8 +148,12 @@ fn read_stored_settings(data_dir: &Path) -> io::Result<StoredSettings> {
     let path = settings_path(data_dir);
     match fs::read_to_string(&path) {
         Ok(text) => {
-            let settings = serde_json::from_str::<StoredSettings>(&text)
+            let mut settings = serde_json::from_str::<StoredSettings>(&text)
                 .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+            if settings.host_id.trim().is_empty() {
+                settings.host_id = generate_host_id();
+                fs::write(&path, serde_json::to_string_pretty(&settings)?)?;
+            }
             let token = normalize_token(settings.token)?;
             validate_port(settings.port)?;
             Ok(StoredSettings { token, ..settings })
@@ -129,6 +162,7 @@ fn read_stored_settings(data_dir: &Path) -> io::Result<StoredSettings> {
             let settings = StoredSettings {
                 port: 8765,
                 token: generate_pairing_token(),
+                host_id: generate_host_id(),
                 launch_at_login: false,
                 close_to_tray_hint_shown: false,
             };
@@ -178,6 +212,14 @@ fn preferred_lan_ipv4() -> Option<Ipv4Addr> {
 }
 
 fn hostname() -> String {
+    if let Ok(name) = hostname::get() {
+        let name = name.to_string_lossy();
+        let name = name.trim();
+        if !name.is_empty() {
+            return name.to_string();
+        }
+    }
+
     if let Ok(name) = std::env::var("COMPUTERNAME") {
         let name = name.trim();
         if !name.is_empty() {
@@ -209,6 +251,12 @@ pub fn generate_pairing_token() -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
+fn generate_host_id() -> String {
+    let mut bytes = [0u8; 12];
+    getrandom::getrandom(&mut bytes).expect("failed to generate host id");
+    URL_SAFE_NO_PAD.encode(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,6 +281,7 @@ mod tests {
 
         assert_eq!(settings.port, 8765);
         assert!(!settings.token.is_empty());
+        assert!(!settings.host_id.is_empty());
         assert!(settings_path(dir.path()).exists());
     }
 
@@ -257,6 +306,7 @@ mod tests {
             bind_host: "0.0.0.0".to_string(),
             port: 8765,
             token: "token".to_string(),
+            host_id: "host-id".to_string(),
             hostname: "host".to_string(),
             launch_at_login: false,
             close_to_tray_hint_shown: false,
@@ -287,6 +337,9 @@ mod tests {
         let settings = RuntimeSettings::from_store(dir.path(), false).expect("settings");
 
         assert!(!settings.close_to_tray_hint_shown);
+        assert!(!settings.host_id.is_empty());
+        let migrated = fs::read_to_string(&path).expect("migrated settings");
+        assert!(migrated.contains(r#""hostId""#));
     }
 
     #[test]
@@ -296,6 +349,7 @@ mod tests {
             bind_host: "0.0.0.0".to_string(),
             port: 8765,
             token: "token".to_string(),
+            host_id: "host-id".to_string(),
             hostname: "host".to_string(),
             launch_at_login: false,
             close_to_tray_hint_shown: true,
@@ -306,5 +360,43 @@ mod tests {
 
         let stored = fs::read_to_string(settings_path(dir.path())).expect("settings text");
         assert!(stored.contains(r#""closeToTrayHintShown": true"#));
+    }
+
+    #[test]
+    fn mdns_hostname_uses_the_stable_host_id() {
+        let settings = RuntimeSettings {
+            bind_host: "0.0.0.0".to_string(),
+            port: 8765,
+            token: "token".to_string(),
+            host_id: "host-id".to_string(),
+            hostname: "Mise Omarchy.local".to_string(),
+            launch_at_login: false,
+            close_to_tray_hint_shown: false,
+            lan_host: None,
+        };
+
+        assert_eq!(settings.mdns_hostname(), "tappad-host-id.local.");
+        assert_eq!(
+            settings.local_url(false),
+            "http://tappad-host-id.local:8765/"
+        );
+    }
+
+    #[test]
+    fn mdns_hostname_is_a_valid_dns_label_for_legacy_ids() {
+        let mut settings = RuntimeSettings {
+            bind_host: "0.0.0.0".to_string(),
+            port: 8765,
+            token: "token".to_string(),
+            host_id: "AB_12--_legacy".to_string(),
+            hostname: "host".to_string(),
+            launch_at_login: false,
+            close_to_tray_hint_shown: false,
+            lan_host: None,
+        };
+
+        assert_eq!(settings.mdns_hostname(), "tappad-abx12--x.local.");
+        settings.host_id = "ABCDEF--".to_string();
+        assert_eq!(settings.mdns_hostname(), "tappad-abcdef--x.local.");
     }
 }

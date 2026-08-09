@@ -4,6 +4,17 @@
 
 The mobile input surface is the phone or tablet control UI for TapPad. It should present one consistent product experience across supported target backends.
 
+## Delivery surfaces
+
+TapPad provides the same Mobile Input Surface through two entry points:
+
+- The host-served web UI remains the zero-install path at its stable TapPad alias, such as `http://tappad-a1b2c3d4.local:8765`.
+- The Expo-based TapPad Mobile App can browse `_tappad._tcp.local`, present nearby Desktop Host Surfaces, retain paired-host credentials, and reconnect automatically.
+
+Nearby Host Discovery is a native-app capability. It supplies host address, port, identity, and descriptive TXT metadata, but it does not grant control. The app must complete the same host authorization boundary before opening the control surface.
+
+Selecting a Paired Device should validate its retained credential and open the Mobile Input Surface directly. The pairing form is only shown when no credential is stored or when the retained credential is rejected.
+
 ## Action and media parity
 
 Actions and media controls promoted into the action parity set are part of the cross-platform product baseline.

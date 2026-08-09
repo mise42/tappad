@@ -54,13 +54,13 @@ pub async fn run_named_action(
 
     #[cfg(target_os = "macos")]
     {
-        let _ = input;
+        let _ = _input;
         run_macos_action(action).await
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
-        let _ = input;
+        let _ = _input;
         Err(format!(
             "TapPad desktop actions are supported on Linux, macOS, and Windows, not {action}"
         )
