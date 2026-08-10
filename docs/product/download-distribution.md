@@ -47,7 +47,7 @@ The workflow writes each build to:
 - `latest/<file>`
 - `latest/downloads.json`
 
-The macOS beta download may point to the Tauri `.dmg`. The native macOS `.zip` can still be published for internal validation or future system-integrated distribution, but it is not required to be the default public beta artifact.
+The macOS beta download points to the Tauri `.dmg`. The native macOS `.zip` is not an active release artifact; the existing AppKit implementation is retained only as reference code unless a future cleanup removes it.
 
 Manual workflow runs support two paths:
 

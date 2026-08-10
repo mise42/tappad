@@ -5,9 +5,10 @@ a pointer, keyboard, paste bridge, and Desktop Action pad for a nearby desktop.
 
 The shared mobile web UI lives in `mobile/`.
 
-## macOS App
+## Legacy native macOS reference
 
-macOS keeps its native AppKit Desktop Host Surface.
+The previous native AppKit Desktop Host is retained as reference code. It is not
+an active product or release path; macOS uses the Tauri Desktop Host below.
 
 ```bash
 cd ~/Work/personal/tappad/macos
@@ -15,10 +16,10 @@ cd ~/Work/personal/tappad/macos
 open .dist/TapPad.app
 ```
 
-The packaging script also creates `.dist/TapPad-mac.zip` for the public
-download flow.
+The packaging script can still create `.dist/TapPad-mac.zip` for local
+inspection, but that archive is not part of the active public download flow.
 
-For development:
+To run the legacy implementation for reference or debugging:
 
 ```bash
 cd ~/Work/personal/tappad/macos
@@ -27,10 +28,9 @@ swift run TapPad
 
 ## Tauri Desktop Host
 
-Linux, macOS, and Windows share one Tauri Desktop Host Surface and one Rust
-backend. macOS still keeps the native AppKit host above as the primary
-commercial app path; the Tauri macOS target provides the same baseline host
-adapter for packaging and parity work.
+Linux, macOS, and Windows share one active Tauri Desktop Host Surface and one
+Rust backend. A narrow macOS-specific adapter may be added later if a verified
+system-integration limitation requires it.
 
 ```bash
 cd ~/Work/personal/tappad/desktop

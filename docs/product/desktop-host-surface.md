@@ -8,8 +8,9 @@ TapPad should feel like one product across macOS, Windows, and Linux even when e
 
 ## Platform posture
 
-- macOS keeps a native host surface.
-- Windows and Linux may share a Tauri host surface.
+- macOS, Windows, and Linux share the Tauri host surface.
+- The previous native AppKit macOS host is reference code, not an active product path.
+- A macOS-specific adapter should be added only for a verified native capability gap and should not duplicate the complete host.
 - Linux requires a GUI host surface rather than only a command-line runtime.
 - Linux launch-at-login, backend lifecycle, and local-name publication should be owned by the Tauri host surface, not by a separate systemd service or fallback path.
 

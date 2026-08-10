@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR 0003](0003-tauri-as-the-single-active-desktop-host.md)
 
 ## Context
 

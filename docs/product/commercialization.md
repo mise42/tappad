@@ -10,7 +10,7 @@ TapPad is now a cross-platform desktop beta across macOS, Windows, and Linux/Oma
 
 macOS was the first commercial wedge and remains important for individual-license polish. Windows and Linux are now part of the product promise rather than future directions, with platform-specific downgrade notes where action parity is not complete.
 
-The current macOS public beta download can use the Tauri `.dmg` when it represents the tested desktop host package. The native macOS app remains the deeper system-integration path rather than a prerequisite for every beta download.
+The macOS public beta uses the Tauri `.dmg` as the active desktop host package. The previous native AppKit implementation is not an active commercial path; any future macOS system integration should be introduced as a narrow adapter only after a concrete limitation is verified.
 
 ## Commercial surfaces
 

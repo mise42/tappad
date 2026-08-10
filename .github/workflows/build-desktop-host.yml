@@ -13,7 +13,6 @@ on:
     paths:
       - ".github/workflows/build-desktop-host.yml"
       - "desktop/**"
-      - "macos/**"
       - "mobile/**"
       - "package.json"
       - "scripts/**"
@@ -21,7 +20,6 @@ on:
     paths:
       - ".github/workflows/build-desktop-host.yml"
       - "desktop/**"
-      - "macos/**"
       - "mobile/**"
       - "package.json"
       - "scripts/**"
@@ -221,27 +219,6 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
-  macos-native:
-    name: Native macOS
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release_tag == ''))
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Build native macOS app
-        working-directory: macos
-        run: ./scripts/build_app.sh
-
-      - name: Upload native macOS artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: tappad-native-macos
-          path: macos/.dist/TapPad-mac.zip
-          if-no-files-found: error
-          compression-level: 0
-
   publish-main-prerelease:
     name: Publish Main Pre-release
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release_tag == ''))
@@ -251,7 +228,6 @@ jobs:
       - desktop-windows
       - desktop-linux
       - desktop-macos
-      - macos-native
     permissions:
       contents: write
 

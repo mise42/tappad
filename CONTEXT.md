@@ -32,8 +32,8 @@ The current product posture for the desktop host: macOS, Windows, and Linux/Omar
 **Commercial Wedge**:
 The buyer and platform focus used to prove paid value first. macOS was the first commercial wedge, but it is no longer the whole product position now that Windows and Linux host surfaces also exist.
 
-**macOS Host Paths**:
-TapPad has both a native AppKit macOS host path and a Tauri macOS host path. The native app remains the system-integrated macOS direction, while the Tauri `.dmg` is acceptable for the current public beta download when it carries the tested desktop host contract.
+**macOS Host Path**:
+TapPad uses the cross-platform Tauri Desktop Host on macOS. The previous native AppKit implementation is retained only as reference code. If an observed macOS limitation requires native system integration, add a narrow macOS adapter without recreating the complete Desktop Host.
 
 **First Buyer**:
 A desktop user working across a larger screen, temporary desk setup, presentation setup, or second-screen workflow who wants a phone or tablet to become a temporary trackpad, keyboard, text surface, and control pad.

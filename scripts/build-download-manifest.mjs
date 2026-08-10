@@ -18,7 +18,7 @@ const platformRules = [
   {
     platform: "macos",
     label: "macOS",
-    extensions: [".dmg", ".zip"],
+    extensions: [".dmg"],
   },
   {
     platform: "windows",
