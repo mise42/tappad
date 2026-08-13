@@ -317,6 +317,12 @@ body[data-text-entry="active"] textarea {
   font-weight: 620;
 }
 
+.primary-keys .super-key {
+  color: var(--accent);
+  border-color: rgba(110, 231, 183, 0.34);
+  background: var(--accent-soft);
+}
+
 .panel-scroll {
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -338,6 +344,19 @@ body[data-text-entry="active"] textarea {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+
+.action-group {
+  min-height: 68px;
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.action-group .panel-heading {
+  margin: 0;
 }
 
 .release-all {

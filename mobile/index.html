@@ -10,7 +10,7 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="stylesheet" href="/styles.css?v15" />
+    <link rel="stylesheet" href="/styles.css?v16" />
   </head>
   <body>
     <main class="shell">
@@ -43,7 +43,7 @@
               <button id="sendText" type="button">Send</button>
             </div>
             <div class="primary-keys">
-              <button data-key="MetaLeft" type="button">⌘</button>
+              <button data-key="MetaLeft" type="button" class="super-key" aria-label="Hold Super while using the touchpad">Super</button>
               <button data-key="AltLeft" type="button">⌥</button>
               <button data-key="ControlLeft" type="button">Ctrl</button>
               <button data-key="ShiftLeft" type="button">⇧</button>
@@ -125,6 +125,9 @@
               <button data-cmd="app_launcher" type="button">Launcher</button>
               <button data-cmd="lock_screen" type="button">Lock</button>
             </div>
+            <section class="action-group" aria-labelledby="codex-group-heading">
+              <h2 id="codex-group-heading" class="panel-heading">Codex</h2>
+            </section>
           </div>
         </div>
         <div id="panel-media" class="tab-panel">

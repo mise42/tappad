@@ -171,7 +171,7 @@ fn linux_command(action: &str) -> Option<&'static str> {
         "open_recordings_folder" => {
             Some(r#"mkdir -p "$HOME/Videos/TapPad" && xdg-open "$HOME/Videos/TapPad""#)
         }
-        "close_window" => Some("hyprctl dispatch killactive"),
+        "close_window" => Some("hyprctl eval 'hl.dispatch(hl.dsp.window.close())'"),
         "app_launcher" => Some("walker"),
         "lock_screen" => Some("omarchy system lock"),
         "media.play_pause" => Some("playerctl play-pause"),
@@ -352,5 +352,14 @@ mod tests {
             assert!(capabilities.contains_key(*action), "missing {action}");
         }
         assert!(!capabilities.contains_key("raw-shell"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn close_window_uses_the_lua_hyprland_dispatcher() {
+        assert_eq!(
+            linux_command("close_window"),
+            Some("hyprctl eval 'hl.dispatch(hl.dsp.window.close())'")
+        );
     }
 }
