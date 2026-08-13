@@ -63,9 +63,9 @@ fn linux_command(action: &str) -> Option<&'static str> {
         "media.play_pause" => Some("playerctl play-pause"),
         "media.next" => Some("playerctl next"),
         "media.prev" => Some("playerctl previous"),
-        "media.volume_up" => Some("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"),
-        "media.volume_down" => Some("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),
-        "media.mute" => Some("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),
+        "media.volume_up" => Some("omarchy audio output volume raise"),
+        "media.volume_down" => Some("omarchy audio output volume lower"),
+        "media.mute" => Some("omarchy audio output volume mute-toggle"),
         _ => None,
     }
 }
@@ -87,6 +87,22 @@ mod tests {
         assert_eq!(
             linux_command("close_window"),
             Some("hyprctl eval 'hl.dispatch(hl.dsp.window.close())'")
+        );
+    }
+
+    #[test]
+    fn volume_actions_use_the_omarchy_osd_entrypoint() {
+        assert_eq!(
+            linux_command("media.volume_up"),
+            Some("omarchy audio output volume raise")
+        );
+        assert_eq!(
+            linux_command("media.volume_down"),
+            Some("omarchy audio output volume lower")
+        );
+        assert_eq!(
+            linux_command("media.mute"),
+            Some("omarchy audio output volume mute-toggle")
         );
     }
 }
