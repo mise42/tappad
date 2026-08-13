@@ -86,7 +86,25 @@ pub const OMARCHY_ACTION_IDS: &[&str] = &[
 ];
 
 pub fn reports_execution_result(action: &str) -> bool {
-    action == "codex.voice.start"
+    matches!(
+        action,
+        "codex.voice.start" | "codex.voice.end" | "codex.voice.toggle_microphone"
+    )
+}
+
+pub fn execution_success_message(action: &str) -> Option<&'static str> {
+    match action {
+        "codex.voice.start" => Some(
+            "The Host dispatched Codex's configured voice hotkey. Voice session status is not confirmed.",
+        ),
+        "codex.voice.end" => Some(
+            "The Host sent Codex's configured End Voice Chat shortcut while Codex was foreground. Voice session status is not confirmed.",
+        ),
+        "codex.voice.toggle_microphone" => Some(
+            "The Host sent Codex's configured microphone shortcut while Codex was foreground. Microphone state is not confirmed.",
+        ),
+        _ => None,
+    }
 }
 
 pub(crate) type ActionFuture<'a> =
@@ -410,6 +428,22 @@ mod tests {
                 .count(),
             3
         );
+    }
+
+    #[test]
+    fn every_codex_voice_action_reports_dispatch_completion_without_claiming_state() {
+        for action in [
+            "codex.voice.start",
+            "codex.voice.end",
+            "codex.voice.toggle_microphone",
+        ] {
+            assert!(reports_execution_result(action));
+            let message = execution_success_message(action).expect("Codex dispatch copy");
+            assert!(message.contains("Host"));
+            assert!(message.contains("not confirmed"));
+        }
+        assert!(!reports_execution_result("media.mute"));
+        assert_eq!(execution_success_message("media.mute"), None);
     }
 
     #[test]

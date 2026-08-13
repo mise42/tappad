@@ -349,23 +349,29 @@ async fn apply_backend_effect(
             });
         }
         BackendEffect::Cmd { action } => {
-            if let Err(error) = state.actions.validate(&action) {
+            let reports_execution_result = crate::actions::reports_execution_result(&action);
+            // Preserve the existing start-action rejection shape. App-scoped Codex actions use an
+            // actionResult so a foreground race can return an explicit blocked result.
+            if (!reports_execution_result || action == "codex.voice.start")
+                && let Err(error) = state.actions.validate(&action)
+            {
                 let code = match error {
                     crate::actions::ActionError::Unknown { .. } => "unknown_action",
                     _ => "unavailable_action",
                 };
                 return Some(ServerMessage::error(code, error.to_string()));
             }
-            if crate::actions::reports_execution_result(&action) {
+            if reports_execution_result {
                 record_action_attempt(&action);
                 return Some(
                     match state.actions.run(state.input.clone(), &action).await {
                         Ok(()) => {
                             record_action_success(&action);
                             ServerMessage::action_result(
-                                action,
+                                action.clone(),
                                 "sent",
-                                "The Host dispatched Codex's configured voice hotkey. Voice session status is not confirmed.",
+                                crate::actions::execution_success_message(&action)
+                                    .unwrap_or("The Host dispatched the configured shortcut."),
                             )
                         }
                         Err(error) => {

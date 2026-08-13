@@ -1,6 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    process::Command,
     sync::Arc,
 };
 
@@ -20,6 +21,7 @@ const END_VOICE_COMMAND: &str = "realtimeVoice.endCall";
 const TOGGLE_MICROPHONE_COMMAND: &str = "realtimeVoice.toggleMicrophoneMute";
 const GLOBAL_SCOPE: &str = "os-global";
 const APP_SCOPE: &str = "app";
+const CODEX_WINDOW_CLASSES: &[&str] = &["chatgpt", "codex", "codex-desktop"];
 
 const CODEX_EXECUTABLES: &[&str] = &[
     "/usr/bin/chatgpt",
@@ -37,6 +39,14 @@ struct Keybinding {
 struct StartBinding {
     accelerator: String,
     input_codes: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct HyprlandActiveWindow {
+    class: String,
+    #[serde(rename = "initialClass")]
+    initial_class: String,
+    pid: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,8 +86,8 @@ pub(super) fn is_codex_action(action: &str) -> bool {
 pub(super) fn capability(action: &str) -> Option<CapabilityStatus> {
     match action {
         START_VOICE_ACTION => Some(start_voice_capability()),
-        END_VOICE_ACTION => Some(app_only_capability("End Voice Chat", END_VOICE_COMMAND)),
-        TOGGLE_MICROPHONE_ACTION => Some(app_only_capability(
+        END_VOICE_ACTION => Some(app_voice_capability("End Voice Chat", END_VOICE_COMMAND)),
+        TOGGLE_MICROPHONE_ACTION => Some(app_voice_capability(
             "Toggle Voice Chat microphone",
             TOGGLE_MICROPHONE_COMMAND,
         )),
@@ -89,26 +99,34 @@ pub(super) async fn execute(
     input: Arc<Mutex<InputDevice>>,
     action: &str,
 ) -> Result<(), ActionError> {
-    if action != START_VOICE_ACTION {
-        let capability = capability(action).ok_or_else(|| ActionError::unknown(action))?;
-        return Err(ActionError::unavailable(
-            "Linux",
-            action,
-            capability
-                .note
-                .unwrap_or_else(|| "Codex action is unavailable".to_string()),
-        ));
-    }
-
     let paths = ProbePaths::current_host()
         .map_err(|error| ActionError::unavailable("Linux", action, error.detail))?;
-    let binding = probe_start_binding(&paths)
+    if action == START_VOICE_ACTION {
+        let binding = probe_start_binding(&paths)
+            .map_err(|error| ActionError::unavailable("Linux", action, error.detail))?;
+        let codes: Vec<&str> = binding.input_codes.iter().map(String::as_str).collect();
+        return input
+            .lock()
+            .await
+            .chord(&codes)
+            .map_err(|error| ActionError::failed("Linux", action, error));
+    }
+
+    let command = match action {
+        END_VOICE_ACTION => END_VOICE_COMMAND,
+        TOGGLE_MICROPHONE_ACTION => TOGGLE_MICROPHONE_COMMAND,
+        _ => return Err(ActionError::unknown(action)),
+    };
+    let binding = resolve_app_binding(&paths, command)
         .map_err(|error| ActionError::unavailable("Linux", action, error.detail))?;
     let codes: Vec<&str> = binding.input_codes.iter().map(String::as_str).collect();
-
-    input
-        .lock()
+    let mut input = input.lock().await;
+    let active_window = read_hyprland_active_window_async()
         .await
+        .map_err(|error| ActionError::unavailable("Linux", action, error.detail))?;
+    verify_codex_foreground(&paths, &active_window)
+        .map_err(|error| ActionError::unavailable("Linux", action, error.detail))?;
+    input
         .chord(&codes)
         .map_err(|error| ActionError::failed("Linux", action, error))
 }
@@ -150,37 +168,54 @@ fn unavailable_start(error: ProbeError) -> CapabilityStatus {
     )
 }
 
-fn app_only_capability(label: &str, command: &str) -> CapabilityStatus {
-    let configured = configured_accelerator(command)
-        .map(|accelerator| format!(" It is currently configured as {accelerator}."))
-        .unwrap_or_default();
+fn app_voice_capability(label: &str, command: &str) -> CapabilityStatus {
+    let paths = match ProbePaths::current_host() {
+        Ok(paths) => paths,
+        Err(error) => return unavailable_app(error),
+    };
+    let active_window = match read_hyprland_active_window() {
+        Ok(active_window) => active_window,
+        Err(error) => return unavailable_app(error),
+    };
+
+    app_voice_capability_for(&paths, label, command, &active_window)
+}
+
+fn app_voice_capability_for(
+    paths: &ProbePaths,
+    label: &str,
+    command: &str,
+    active_window: &str,
+) -> CapabilityStatus {
+    match probe_app_binding(paths, command, active_window) {
+        Ok(binding) => {
+            let mut capability = scoped_capability(
+                "supported",
+                format!(
+                    "Codex is foreground. Sends its configured {label} app shortcut ({}) without confirming voice state.",
+                    binding.accelerator
+                ),
+                APP_SCOPE,
+                None,
+            );
+            capability.binding = Some(binding.accelerator);
+            capability
+        }
+        Err(error) => unavailable_app(error),
+    }
+}
+
+fn unavailable_app(error: ProbeError) -> CapabilityStatus {
     scoped_capability(
         "unavailable",
-        format!(
-            "Codex defines {label} as an app-only shortcut.{configured} TapPad will not inject it when Codex may be in the background.",
-        ),
+        error.detail,
         APP_SCOPE,
-        Some("codex_app_scope_only"),
+        Some(error.reason_code),
     )
 }
 
-fn configured_accelerator(command: &str) -> Option<String> {
-    let paths = ProbePaths::current_host().ok()?;
-    read_keybindings(&paths.keybindings)
-        .ok()?
-        .into_iter()
-        .find(|binding| binding.command == command)
-        .map(|binding| binding.key)
-}
-
 fn probe_start_binding(paths: &ProbePaths) -> Result<StartBinding, ProbeError> {
-    if !paths.executables.iter().any(|path| path.is_file()) {
-        return Err(ProbeError {
-            reason_code: "codex_not_installed",
-            detail: "Codex desktop was not found at a supported Linux installation path."
-                .to_string(),
-        });
-    }
+    verify_codex_installed(paths)?;
 
     let bindings = read_keybindings(&paths.keybindings)?;
     let mut matching_bindings = bindings
@@ -220,6 +255,133 @@ fn probe_start_binding(paths: &ProbePaths) -> Result<StartBinding, ProbeError> {
         accelerator: binding.key,
         input_codes,
     })
+}
+
+fn probe_app_binding(
+    paths: &ProbePaths,
+    command: &str,
+    active_window: &str,
+) -> Result<StartBinding, ProbeError> {
+    let binding = resolve_app_binding(paths, command)?;
+    verify_codex_foreground(paths, active_window)?;
+    Ok(binding)
+}
+
+fn resolve_app_binding(paths: &ProbePaths, command: &str) -> Result<StartBinding, ProbeError> {
+    verify_codex_installed(paths)?;
+    let bindings = read_keybindings(&paths.keybindings)?;
+    let mut matching_bindings = bindings
+        .into_iter()
+        .filter(|binding| binding.command == command);
+    let binding = matching_bindings.next().ok_or_else(|| ProbeError {
+        reason_code: "codex_app_binding_missing",
+        detail: "The Codex app shortcut is not configured.".to_string(),
+    })?;
+    if matching_bindings.next().is_some() {
+        return Err(ProbeError {
+            reason_code: "codex_app_binding_ambiguous",
+            detail: "Codex has more than one binding for this app shortcut.".to_string(),
+        });
+    }
+    let input_codes = parse_accelerator(&binding.key).map_err(|_| ProbeError {
+        reason_code: "codex_app_binding_unsupported",
+        detail: format!(
+            "Codex's configured app shortcut ({}) cannot be dispatched safely.",
+            binding.key
+        ),
+    })?;
+    Ok(StartBinding {
+        accelerator: binding.key,
+        input_codes,
+    })
+}
+
+fn verify_codex_installed(paths: &ProbePaths) -> Result<(), ProbeError> {
+    if paths.executables.iter().any(|path| path.is_file()) {
+        return Ok(());
+    }
+    Err(ProbeError {
+        reason_code: "codex_not_installed",
+        detail: "Codex desktop was not found at a supported Linux installation path.".to_string(),
+    })
+}
+
+fn read_hyprland_active_window() -> Result<String, ProbeError> {
+    let output = Command::new("hyprctl")
+        .args(["activewindow", "-j"])
+        .output()
+        .map_err(foreground_probe_error)?;
+    active_window_output(output.status.success(), &output.stdout, &output.stderr)
+}
+
+async fn read_hyprland_active_window_async() -> Result<String, ProbeError> {
+    let output = tokio::process::Command::new("hyprctl")
+        .args(["activewindow", "-j"])
+        .output()
+        .await
+        .map_err(foreground_probe_error)?;
+    active_window_output(output.status.success(), &output.stdout, &output.stderr)
+}
+
+fn active_window_output(success: bool, stdout: &[u8], stderr: &[u8]) -> Result<String, ProbeError> {
+    if success {
+        return String::from_utf8(stdout.to_vec()).map_err(foreground_probe_error);
+    }
+    let detail = String::from_utf8_lossy(stderr).trim().to_string();
+    Err(ProbeError {
+        reason_code: "codex_foreground_unreadable",
+        detail: if detail.is_empty() {
+            "TapPad could not inspect the active Hyprland window.".to_string()
+        } else {
+            format!("TapPad could not inspect the active Hyprland window: {detail}")
+        },
+    })
+}
+
+fn foreground_probe_error(error: impl std::fmt::Display) -> ProbeError {
+    ProbeError {
+        reason_code: "codex_foreground_unreadable",
+        detail: format!("TapPad could not inspect the active Hyprland window: {error}"),
+    }
+}
+
+fn verify_codex_foreground(paths: &ProbePaths, active_window: &str) -> Result<(), ProbeError> {
+    let window: HyprlandActiveWindow =
+        serde_json::from_str(active_window).map_err(foreground_probe_error)?;
+    if !is_codex_window_class(&window.class) || !is_codex_window_class(&window.initial_class) {
+        return Err(ProbeError {
+            reason_code: "codex_not_foreground",
+            detail: "Focus Codex on the desktop to use this app shortcut.".to_string(),
+        });
+    }
+
+    let active_executable = fs::canonicalize(
+        paths.proc_root.join(window.pid.to_string()).join("exe"),
+    )
+    .map_err(|_| ProbeError {
+        reason_code: "codex_foreground_identity_mismatch",
+        detail: "The foreground window could not be verified as the installed Codex app."
+            .to_string(),
+    })?;
+    let installed_match = paths
+        .executables
+        .iter()
+        .filter_map(|path| fs::canonicalize(path).ok())
+        .any(|executable| executable == active_executable);
+    if !installed_match {
+        return Err(ProbeError {
+            reason_code: "codex_foreground_identity_mismatch",
+            detail: "The foreground window could not be verified as the installed Codex app."
+                .to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn is_codex_window_class(class: &str) -> bool {
+    CODEX_WINDOW_CLASSES
+        .iter()
+        .any(|candidate| class.eq_ignore_ascii_case(candidate))
 }
 
 fn read_keybindings(path: &Path) -> Result<Vec<Keybinding>, ProbeError> {
@@ -381,6 +543,7 @@ fn codex_is_running(proc_root: &Path) -> std::io::Result<bool> {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::os::unix::fs::symlink;
     use tempfile::TempDir;
 
     fn fixture(bindings: serde_json::Value, running: bool) -> (TempDir, ProbePaths) {
@@ -395,6 +558,7 @@ mod tests {
             let process = proc_root.join("1234");
             fs::create_dir(&process).expect("process");
             fs::write(process.join("comm"), "ChatGPT\n").expect("comm");
+            symlink(&executable, process.join("exe")).expect("process executable");
         }
         (
             temp,
@@ -404,6 +568,15 @@ mod tests {
                 proc_root,
             },
         )
+    }
+
+    fn active_window(class: &str, initial_class: &str, pid: u32) -> String {
+        json!({
+            "class": class,
+            "initialClass": initial_class,
+            "pid": pid,
+        })
+        .to_string()
     }
 
     #[test]
@@ -504,13 +677,100 @@ mod tests {
     }
 
     #[test]
-    fn app_scoped_end_and_mute_are_never_runnable() {
-        for action in [END_VOICE_ACTION, TOGGLE_MICROPHONE_ACTION] {
-            let capability = capability(action).expect("Codex capability");
-            assert_eq!(capability.state, "unavailable");
+    fn app_scoped_end_and_mute_are_supported_only_for_verified_foreground_codex() {
+        let (_temp, paths) = fixture(
+            json!([
+                {"command": END_VOICE_COMMAND, "key": "F3"},
+                {"command": TOGGLE_MICROPHONE_COMMAND, "key": "F4"}
+            ]),
+            true,
+        );
+        let foreground = active_window("chatgpt", "chatgpt", 1234);
+
+        for (action, label, command, binding) in [
+            (END_VOICE_ACTION, "End Voice Chat", END_VOICE_COMMAND, "F3"),
+            (
+                TOGGLE_MICROPHONE_ACTION,
+                "Toggle Voice Chat microphone",
+                TOGGLE_MICROPHONE_COMMAND,
+                "F4",
+            ),
+        ] {
+            let capability = app_voice_capability_for(&paths, label, command, &foreground);
+            assert_eq!(capability.state, "supported", "{action}");
             assert_eq!(capability.scope, Some(APP_SCOPE));
-            assert_eq!(capability.reason_code, Some("codex_app_scope_only"));
+            assert_eq!(capability.reason_code, None);
+            assert_eq!(capability.binding.as_deref(), Some(binding));
         }
+    }
+
+    #[test]
+    fn app_scoped_actions_reject_non_codex_or_partially_matching_window_classes() {
+        let (_temp, paths) = fixture(json!([{"command": END_VOICE_COMMAND, "key": "F3"}]), true);
+
+        for foreground in [
+            active_window("terminal", "terminal", 1234),
+            active_window("chatgpt", "terminal", 1234),
+            active_window("terminal", "chatgpt", 1234),
+        ] {
+            let error = probe_app_binding(&paths, END_VOICE_COMMAND, &foreground)
+                .expect_err("both window classes must identify Codex");
+            assert_eq!(error.reason_code, "codex_not_foreground");
+        }
+    }
+
+    #[test]
+    fn app_scoped_actions_reject_spoofed_codex_class_with_wrong_executable() {
+        let (_temp, paths) = fixture(json!([{"command": END_VOICE_COMMAND, "key": "F3"}]), true);
+        let other_process = paths.proc_root.join("9999");
+        fs::create_dir(&other_process).expect("other process");
+        let other_executable = paths.proc_root.join("terminal");
+        fs::write(&other_executable, "fixture").expect("other executable");
+        symlink(&other_executable, other_process.join("exe")).expect("other process executable");
+
+        let error = probe_app_binding(
+            &paths,
+            END_VOICE_COMMAND,
+            &active_window("chatgpt", "chatgpt", 9999),
+        )
+        .expect_err("window class alone is not authoritative");
+        assert_eq!(error.reason_code, "codex_foreground_identity_mismatch");
+    }
+
+    #[test]
+    fn app_scoped_binding_errors_are_explicit_and_never_guess() {
+        let (_temp, missing) = fixture(json!([]), true);
+        assert_eq!(
+            resolve_app_binding(&missing, END_VOICE_COMMAND)
+                .expect_err("missing binding")
+                .reason_code,
+            "codex_app_binding_missing"
+        );
+
+        let (_temp, ambiguous) = fixture(
+            json!([
+                {"command": END_VOICE_COMMAND, "key": "F3"},
+                {"command": END_VOICE_COMMAND, "key": "F5"}
+            ]),
+            true,
+        );
+        assert_eq!(
+            resolve_app_binding(&ambiguous, END_VOICE_COMMAND)
+                .expect_err("ambiguous binding")
+                .reason_code,
+            "codex_app_binding_ambiguous"
+        );
+
+        let (_temp, unsupported) = fixture(
+            json!([{"command": END_VOICE_COMMAND, "key": "VolumeUp"}]),
+            true,
+        );
+        assert_eq!(
+            resolve_app_binding(&unsupported, END_VOICE_COMMAND)
+                .expect_err("unsupported binding")
+                .reason_code,
+            "codex_app_binding_unsupported"
+        );
     }
 
     #[test]

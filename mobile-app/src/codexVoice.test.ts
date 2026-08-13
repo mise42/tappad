@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  CODEX_VOICE_END_ACTION,
+  CODEX_VOICE_MICROPHONE_ACTION,
   CODEX_VOICE_START_ACTION,
   codexVoiceControl,
   codexVoiceResultNotice,
@@ -20,7 +22,7 @@ test('old Hosts without Codex capabilities do not render the Codex group', () =>
   }), null);
 });
 
-test('start is enabled only for an explicitly OS-global supported capability', () => {
+test('start behavior remains gated on an explicitly OS-global supported capability', () => {
   const control = codexVoiceControl({
     [CODEX_VOICE_START_ACTION]: {
       state: 'supported',
@@ -29,71 +31,105 @@ test('start is enabled only for an explicitly OS-global supported capability', (
     },
   });
 
-  assert.deepEqual(control?.start, {
+  assert.deepEqual(control?.actions[0], {
+    action: CODEX_VOICE_START_ACTION,
+    label: 'Start',
     enabled: true,
     detail: 'Configured global hotkey: Command+F3',
-    binding: 'Command+F3',
+    disabledLabel: undefined,
   });
-  assert.equal(control?.start.detail.includes('F2'), false);
+  assert.equal(control?.actions[0]?.detail.includes('F2'), false);
 
   assert.equal(codexVoiceControl({
     [CODEX_VOICE_START_ACTION]: { state: 'supported', scope: 'app' },
-  })?.start.enabled, false);
+  })?.actions[0]?.enabled, false);
   assert.equal(codexVoiceControl({
     [CODEX_VOICE_START_ACTION]: { state: 'supported' },
   }), null);
 });
 
-test('unavailable start uses stable reason codes for compact feedback', () => {
-  const control = codexVoiceControl({
-    [CODEX_VOICE_START_ACTION]: {
-      state: 'unavailable',
-      scope: 'os-global',
-      reasonCode: 'codex_not_running',
-      note: 'Long Host diagnostic.',
-    },
-  });
-
-  assert.equal(control?.start.enabled, false);
-  assert.equal(control?.start.detail, 'Open Codex on the Host to register its global hotkey.');
-});
-
-test('end and microphone are explanatory app-only rows and never controls', () => {
+test('end and mute become compact enabled controls only with foreground-gated app capabilities', () => {
   const control = codexVoiceControl({
     [CODEX_VOICE_START_ACTION]: { state: 'unavailable', scope: 'os-global' },
-    'codex.voice.end': {
-      state: 'unavailable',
+    [CODEX_VOICE_END_ACTION]: {
+      state: 'supported',
       scope: 'app',
-      reasonCode: 'codex_app_scope_only',
-      note: 'Configured as F4.',
+      binding: 'F3',
     },
-    'codex.voice.toggle_microphone': {
-      state: 'unavailable',
+    [CODEX_VOICE_MICROPHONE_ACTION]: {
+      state: 'supported',
       scope: 'app',
-      reasonCode: 'codex_app_scope_only',
-      note: 'Configured as F6.',
+      binding: 'F4',
     },
   });
 
-  assert.deepEqual(control?.appOnly, [
-    { action: 'codex.voice.end', label: 'End voice', detail: 'App-only · not sent globally' },
-    { action: 'codex.voice.toggle_microphone', label: 'Microphone', detail: 'App-only · not sent globally' },
+  assert.deepEqual(control?.actions.slice(1), [
+    {
+      action: CODEX_VOICE_END_ACTION,
+      label: 'End',
+      enabled: true,
+      detail: 'End shortcut available while Codex is foreground.',
+      disabledLabel: undefined,
+    },
+    {
+      action: CODEX_VOICE_MICROPHONE_ACTION,
+      label: 'Mute',
+      enabled: true,
+      detail: 'Mute shortcut available while Codex is foreground.',
+      disabledLabel: undefined,
+    },
   ]);
+  assert.equal(control?.foregroundRequired, false);
+  assert.equal(JSON.stringify(control).includes('F3'), false);
   assert.equal(JSON.stringify(control).includes('F4'), false);
-  assert.equal(JSON.stringify(control).includes('F6'), false);
 });
 
-test('request and result copy never claim that a voice session started', () => {
+test('end and mute stay visible but disabled when Codex is not foreground', () => {
+  const control = codexVoiceControl({
+    [CODEX_VOICE_START_ACTION]: { state: 'unavailable', scope: 'os-global' },
+    [CODEX_VOICE_END_ACTION]: {
+      state: 'unavailable',
+      scope: 'app',
+      reasonCode: 'codex_not_foreground',
+      note: 'Long Host diagnostic.',
+    },
+    [CODEX_VOICE_MICROPHONE_ACTION]: {
+      state: 'unavailable',
+      scope: 'app',
+      reasonCode: 'codex_foreground_identity_mismatch',
+    },
+  });
+
+  assert.deepEqual(control?.actions.slice(1).map((action) => ({
+    action: action.action,
+    enabled: action.enabled,
+    disabledLabel: action.disabledLabel,
+  })), [
+    { action: CODEX_VOICE_END_ACTION, enabled: false, disabledLabel: 'Focus Codex' },
+    { action: CODEX_VOICE_MICROPHONE_ACTION, enabled: false, disabledLabel: 'Focus Codex' },
+  ]);
+  assert.equal(control?.foregroundRequired, true);
+});
+
+test('request and result copy reports only shortcut dispatch or a block', () => {
   assert.equal(
-    codexVoiceSentNotice('omarchy.local'),
+    codexVoiceSentNotice(CODEX_VOICE_START_ACTION, 'omarchy.local'),
     'Sending the configured Codex voice hotkey to omarchy.local…',
   );
   assert.equal(
-    codexVoiceResultNotice('sent', 'ignored Host copy'),
+    codexVoiceResultNotice(CODEX_VOICE_START_ACTION, 'sent', 'ignored Host copy'),
     'Configured Codex voice hotkey sent. Voice session status is not confirmed.',
   );
   assert.equal(
-    codexVoiceResultNotice('failed', 'Input dispatch failed.'),
-    'Input dispatch failed.',
+    codexVoiceResultNotice(CODEX_VOICE_END_ACTION, 'sent', undefined),
+    'End shortcut sent. Voice state is not confirmed.',
+  );
+  assert.equal(
+    codexVoiceResultNotice(CODEX_VOICE_MICROPHONE_ACTION, 'sent', undefined),
+    'Mute shortcut sent. Microphone state is not confirmed.',
+  );
+  assert.equal(
+    codexVoiceResultNotice(CODEX_VOICE_END_ACTION, 'failed', 'Codex is not foreground.'),
+    'Blocked: focus Codex and try again.',
   );
 });

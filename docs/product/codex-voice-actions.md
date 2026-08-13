@@ -6,8 +6,8 @@ the Desktop Host owns capability discovery and target-specific execution.
 | Action id | Intended result | Audited Linux scope | Current availability |
 | --- | --- | --- | --- |
 | `codex.voice.start` | Dispatch Codex's configured Voice Chat hotkey | `os-global` | Supported only while Codex desktop is installed, running, and has a readable, safely dispatchable `realtimeVoice` binding |
-| `codex.voice.end` | End the active Voice Chat | `app` | Unavailable for background control |
-| `codex.voice.toggle_microphone` | Mute or unmute the Voice Chat microphone | `app` | Unavailable for background control |
+| `codex.voice.end` | Send Codex's configured End Voice Chat shortcut | `app` | Supported only while the foreground Hyprland window is strongly verified as the installed Codex app |
+| `codex.voice.toggle_microphone` | Send Codex's configured microphone shortcut | `app` | Supported only while the foreground Hyprland window is strongly verified as the installed Codex app |
 
 The Linux adapter reads the current Codex keybinding instead of assuming a key
 chord. A successful `codex.voice.start` action means TapPad dispatched that
@@ -19,10 +19,14 @@ For this action the Host sends an `actionResult` only after input dispatch
 returns. The mobile surface shows “hotkey sent” only for that acknowledgement;
 a transport send alone is shown as pending, and a dispatch error is surfaced.
 
-`codex.voice.end` and `codex.voice.toggle_microphone` remain visible in the Host
-capability manifest with `state: unavailable`, `scope: app`, and
-`reasonCode: codex_app_scope_only`. The Host must not focus Codex, inject the
-app-only shortcuts, or claim those actions work globally.
+`codex.voice.end` and `codex.voice.toggle_microphone` remain app-scoped. The
+Linux adapter reads their current Codex keybindings and advertises them as
+supported only when `hyprctl activewindow -j` reports Codex for both `class`
+and `initialClass`, and the active PID's executable resolves to a supported
+installed Codex executable. The adapter repeats that identity check immediately
+before dispatch. It never focuses or restores Codex. A successful result means
+only that the configured app shortcut was sent; it does not confirm that a
+session ended or microphone state changed.
 
 Other unavailable conditions use stable reason codes so a future client can
 explain the boundary without parsing prose:
@@ -37,14 +41,21 @@ explain the boundary without parsing prose:
 - `codex_global_binding_unsupported`
 - `codex_runtime_unreadable`
 - `codex_platform_not_verified`
+- `codex_app_binding_missing`
+- `codex_app_binding_ambiguous`
+- `codex_app_binding_unsupported`
+- `codex_not_foreground`
+- `codex_foreground_unreadable`
+- `codex_foreground_identity_mismatch`
 
 No action accepts a raw shell command from a client. Execution remains inside
 the Command Registry and platform adapter boundary.
 
-The native Actions panel renders a compact Codex row only when the Host
-advertises at least one Codex voice capability. The start control is enabled
-only for `state: supported` with `scope: os-global`; app-only end and microphone
-actions are explanatory rows and are never sent.
+The native Actions panel renders compact Start, End, and Mute buttons when the
+Host advertises Codex voice capabilities. Start retains its OS-global gate. End
+and Mute are enabled only for supported app-scoped capabilities; otherwise they
+stay visible with a short disabled label. While Actions is visible, the app
+refreshes capabilities so foreground changes are reflected without reconnecting.
 Platforms that advertise only the unverified `unknown` scope keep the existing
 Actions UI and omit this Linux-specific control group.
 The mobile surface refreshes the Host manifest when its WebSocket becomes ready,
