@@ -34,6 +34,7 @@ import {
   releaseInputMessages,
   serializeMessage,
   socketUrl,
+  supportedWorkspaceActions,
   type ActionCapabilities,
   type ConnectionState,
   type HostState,
@@ -692,6 +693,10 @@ function ActionsPanel({ capabilities, capabilityError, sendAction }: {
   capabilityError: string | null;
   sendAction: (label: string, action: string) => void;
 }) {
+  const workspaceActions = supportedWorkspaceActions(capabilities);
+  const workspaceNavigation = workspaceActions.filter(({ action }) => !/^workspace\.\d+$/.test(action));
+  const numberedWorkspaces = workspaceActions.filter(({ action }) => /^workspace\.\d+$/.test(action));
+
   return (
     <ScrollView contentContainerStyle={styles.scrollPanel} showsVerticalScrollIndicator={false}>
       <View style={styles.sectionHeader}>
@@ -699,6 +704,39 @@ function ActionsPanel({ capabilities, capabilityError, sendAction }: {
         {!capabilities && !capabilityError ? <Text style={styles.sectionBody}>Checking availability…</Text> : null}
       </View>
       {capabilityError ? <Text style={styles.inlineWarning}>Availability check failed: {capabilityError}</Text> : null}
+      {workspaceActions.length > 0 ? (
+        <View style={styles.actionGroup}>
+          <Text style={styles.groupTitle}>Workspaces</Text>
+          <View style={styles.workspaceControls}>
+            <View style={styles.workspaceNavigationRow}>
+              {workspaceNavigation.map(({ label, action }) => (
+                <Pressable
+                  key={action}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Switch to ${label.toLowerCase()} workspace`}
+                  onPress={() => sendAction(label, action)}
+                  style={({ pressed }) => [styles.workspaceNavigationButton, pressed && styles.actionButtonPressed]}
+                >
+                  <Text style={styles.actionButtonText}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.workspaceNumberRow}>
+              {numberedWorkspaces.map(({ label, action }) => (
+                <Pressable
+                  key={action}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Switch to workspace ${label}`}
+                  onPress={() => sendAction(`Workspace ${label}`, action)}
+                  style={({ pressed }) => [styles.workspaceNumberButton, pressed && styles.actionButtonPressed]}
+                >
+                  <Text style={styles.workspaceNumberText}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        </View>
+      ) : null}
       {ACTION_GROUPS.map((group) => (
         <View key={group.title} style={styles.actionGroup}>
           <Text style={styles.groupTitle}>{group.title}</Text>
@@ -830,6 +868,12 @@ const styles = StyleSheet.create({
   actionButtonUnavailable: { backgroundColor: theme.color.warningSurface, borderColor: theme.color.warningBorder },
   actionButtonText: { color: theme.color.textStrong, fontSize: 13, fontWeight: '700' },
   actionStateUnavailable: { color: theme.color.warning, fontSize: 10, fontWeight: '700', marginTop: 4 },
+  workspaceControls: { gap: 8, marginTop: 8 },
+  workspaceNavigationRow: { flexDirection: 'row', gap: 8 },
+  workspaceNavigationButton: { flex: 1, minHeight: 48, borderRadius: theme.radius.panel, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
+  workspaceNumberRow: { flexDirection: 'row', gap: 8 },
+  workspaceNumberButton: { flex: 1, minHeight: 48, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
+  workspaceNumberText: { color: theme.color.textStrong, fontSize: 15, fontWeight: '800' },
   mediaPanel: { flex: 1, paddingHorizontal: 14, paddingTop: 2 },
   mediaGroup: { marginTop: 16 },
   mediaRow: { flexDirection: 'row', gap: 9, marginTop: 8 },

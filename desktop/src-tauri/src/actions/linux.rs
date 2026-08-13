@@ -5,8 +5,8 @@ use tokio::sync::Mutex;
 use crate::input::InputDevice;
 
 use super::{
-    ActionError, ActionFuture, CapabilityStatus, DesktopActionAdapter, capability,
-    run_shell_command,
+    ActionError, ActionFuture, CapabilityStatus, DesktopActionAdapter, OMARCHY_ACTION_IDS,
+    capability, run_shell_command,
 };
 
 pub(super) struct LinuxActionAdapter;
@@ -14,6 +14,10 @@ pub(super) struct LinuxActionAdapter;
 impl DesktopActionAdapter for LinuxActionAdapter {
     fn platform_name(&self) -> &'static str {
         "Linux"
+    }
+
+    fn additional_action_ids(&self) -> &'static [&'static str] {
+        OMARCHY_ACTION_IDS
     }
 
     fn capability(&self, action: &str) -> CapabilityStatus {
@@ -58,7 +62,7 @@ fn linux_command(action: &str) -> Option<&'static str> {
             Some(r#"mkdir -p "$HOME/Videos/TapPad" && xdg-open "$HOME/Videos/TapPad""#)
         }
         "close_window" => Some("hyprctl eval 'hl.dispatch(hl.dsp.window.close())'"),
-        "app_launcher" => Some("walker"),
+        "app_launcher" => Some("omarchy-menu toggle apps"),
         "lock_screen" => Some("omarchy system lock"),
         "media.play_pause" => Some("playerctl play-pause"),
         "media.next" => Some("playerctl next"),
@@ -66,6 +70,20 @@ fn linux_command(action: &str) -> Option<&'static str> {
         "media.volume_up" => Some("omarchy audio output volume raise"),
         "media.volume_down" => Some("omarchy audio output volume lower"),
         "media.mute" => Some("omarchy audio output volume mute-toggle"),
+        "workspace.previous" => {
+            Some("hyprctl eval 'hl.dispatch(hl.dsp.focus({ workspace = \"e-1\" }))'")
+        }
+        "workspace.former" => {
+            Some("hyprctl eval 'hl.dispatch(hl.dsp.focus({ workspace = \"previous\" }))'")
+        }
+        "workspace.next" => {
+            Some("hyprctl eval 'hl.dispatch(hl.dsp.focus({ workspace = \"e+1\" }))'")
+        }
+        "workspace.1" => Some("hyprctl eval 'hl.dispatch(hl.dsp.focus({ workspace = \"1\" }))'"),
+        "workspace.2" => Some("hyprctl eval 'hl.dispatch(hl.dsp.focus({ workspace = \"2\" }))'"),
+        "workspace.3" => Some("hyprctl eval 'hl.dispatch(hl.dsp.focus({ workspace = \"3\" }))'"),
+        "workspace.4" => Some("hyprctl eval 'hl.dispatch(hl.dsp.focus({ workspace = \"4\" }))'"),
+        "workspace.5" => Some("hyprctl eval 'hl.dispatch(hl.dsp.focus({ workspace = \"5\" }))'"),
         _ => None,
     }
 }
@@ -73,11 +91,11 @@ fn linux_command(action: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::ACTION_IDS;
+    use crate::actions::{ACTION_IDS, OMARCHY_ACTION_IDS};
 
     #[test]
     fn every_advertised_linux_action_has_an_implementation() {
-        for action in ACTION_IDS {
+        for action in ACTION_IDS.iter().chain(OMARCHY_ACTION_IDS) {
             assert!(linux_command(action).is_some(), "missing {action}");
         }
     }
@@ -87,6 +105,40 @@ mod tests {
         assert_eq!(
             linux_command("close_window"),
             Some("hyprctl eval 'hl.dispatch(hl.dsp.window.close())'")
+        );
+    }
+
+    #[test]
+    fn workspace_actions_use_direct_lua_focus_dispatches() {
+        let expected = [
+            ("workspace.previous", "e-1"),
+            ("workspace.former", "previous"),
+            ("workspace.next", "e+1"),
+            ("workspace.1", "1"),
+            ("workspace.2", "2"),
+            ("workspace.3", "3"),
+            ("workspace.4", "4"),
+            ("workspace.5", "5"),
+        ];
+
+        for (action, workspace) in expected {
+            let expected_command = format!(
+                "hyprctl eval 'hl.dispatch(hl.dsp.focus({{ workspace = \"{workspace}\" }}))'"
+            );
+            assert_eq!(
+                linux_command(action),
+                Some(expected_command.as_str()),
+                "wrong mapping for {action}"
+            );
+        }
+        assert_eq!(OMARCHY_ACTION_IDS, expected.map(|(action, _)| action));
+    }
+
+    #[test]
+    fn app_launcher_uses_the_current_omarchy_apps_menu() {
+        assert_eq!(
+            linux_command("app_launcher"),
+            Some("omarchy-menu toggle apps")
         );
     }
 

@@ -44,11 +44,25 @@ pub const ACTION_IDS: &[&str] = &[
     "media.volume_up",
 ];
 
+pub const OMARCHY_ACTION_IDS: &[&str] = &[
+    "workspace.previous",
+    "workspace.former",
+    "workspace.next",
+    "workspace.1",
+    "workspace.2",
+    "workspace.3",
+    "workspace.4",
+    "workspace.5",
+];
+
 pub(crate) type ActionFuture<'a> =
     Pin<Box<dyn Future<Output = Result<(), ActionError>> + Send + 'a>>;
 
 pub(crate) trait DesktopActionAdapter: Send + Sync {
     fn platform_name(&self) -> &'static str;
+    fn additional_action_ids(&self) -> &'static [&'static str] {
+        &[]
+    }
     fn capability(&self, action: &str) -> CapabilityStatus;
     fn execute<'a>(&'a self, input: Arc<Mutex<InputDevice>>, action: &'a str) -> ActionFuture<'a>;
 }
@@ -65,6 +79,7 @@ impl DesktopActions {
     pub fn capabilities(&self) -> BTreeMap<String, CapabilityStatus> {
         ACTION_IDS
             .iter()
+            .chain(self.adapter.additional_action_ids())
             .map(|action| ((*action).to_string(), self.adapter.capability(action)))
             .collect()
     }
@@ -79,7 +94,8 @@ impl DesktopActions {
     }
 
     pub(crate) fn validate(&self, action: &str) -> Result<(), ActionError> {
-        if !ACTION_IDS.contains(&action) {
+        if !ACTION_IDS.contains(&action) && !self.adapter.additional_action_ids().contains(&action)
+        {
             return Err(ActionError::unknown(action));
         }
 
@@ -298,8 +314,28 @@ mod tests {
         for action in ACTION_IDS {
             assert!(capabilities.contains_key(*action), "missing {action}");
         }
+        #[cfg(target_os = "linux")]
+        assert_eq!(
+            capabilities.len(),
+            ACTION_IDS.len() + OMARCHY_ACTION_IDS.len()
+        );
+        #[cfg(not(target_os = "linux"))]
         assert_eq!(capabilities.len(), ACTION_IDS.len());
         assert!(!capabilities.contains_key("raw-shell"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn omarchy_workspace_actions_are_advertised_as_supported() {
+        let capabilities = action_capabilities();
+
+        for action in OMARCHY_ACTION_IDS {
+            assert_eq!(
+                capabilities.get(*action).map(|capability| capability.state),
+                Some("supported"),
+                "missing supported capability for {action}"
+            );
+        }
     }
 
     #[test]
@@ -313,6 +349,21 @@ mod tests {
             actions.validate("raw-shell"),
             Err(ActionError::Unknown {
                 action: "raw-shell".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn platform_specific_actions_require_adapter_advertisement() {
+        let actions = DesktopActions::new(Arc::new(StubAdapter {
+            state: "supported",
+            note: None,
+        }));
+
+        assert_eq!(
+            actions.validate("workspace.1"),
+            Err(ActionError::Unknown {
+                action: "workspace.1".to_string(),
             })
         );
     }

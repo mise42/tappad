@@ -6,6 +6,7 @@ import {
   releaseMessages,
   serializeMessage,
   socketUrl,
+  supportedWorkspaceActions,
   supportsPointerButton,
 } from './protocol.ts';
 
@@ -52,4 +53,17 @@ test('release cleanup emits one key-up per held key', () => {
 
 test('pairing token is encoded in the existing websocket URL', () => {
   assert.equal(socketUrl('192.168.1.2', 8765, 'a b&c'), 'ws://192.168.1.2:8765/ws?token=a%20b%26c');
+});
+
+test('workspace controls only include actions the Host supports', () => {
+  assert.deepEqual(supportedWorkspaceActions(null), []);
+  assert.deepEqual(supportedWorkspaceActions({
+    'workspace.next': { state: 'supported' },
+    'workspace.former': { state: 'hidden' },
+    'workspace.3': { state: 'supported' },
+    'workspace.6': { state: 'supported' },
+  }), [
+    { label: 'Next', action: 'workspace.next' },
+    { label: '3', action: 'workspace.3' },
+  ]);
 });

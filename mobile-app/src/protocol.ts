@@ -19,6 +19,11 @@ export type ActionCapability = {
 
 export type ActionCapabilities = Record<string, ActionCapability>;
 
+export type WorkspaceAction = {
+  label: string;
+  action: string;
+};
+
 export type HostState = {
   actions?: ActionCapabilities;
   protocol?: {
@@ -47,6 +52,17 @@ export type ServerMessage = {
 };
 
 export const POINTER_BUTTONS = ['left', 'right', 'middle'] as const;
+
+const WORKSPACE_ACTIONS: WorkspaceAction[] = [
+  { label: 'Previous', action: 'workspace.previous' },
+  { label: 'Former', action: 'workspace.former' },
+  { label: 'Next', action: 'workspace.next' },
+  { label: '1', action: 'workspace.1' },
+  { label: '2', action: 'workspace.2' },
+  { label: '3', action: 'workspace.3' },
+  { label: '4', action: 'workspace.4' },
+  { label: '5', action: 'workspace.5' },
+];
 
 export const RELEASABLE_KEYS = [
   'Escape', 'Tab', 'Enter', 'Backspace', 'PrintScreen',
@@ -87,4 +103,9 @@ export function supportsPointerButton(message: ServerMessage) {
     (message.protocolVersion ?? 0) >= 2 &&
     message.inputCapabilities?.pointerButton?.state === 'supported'
   );
+}
+
+export function supportedWorkspaceActions(capabilities: ActionCapabilities | null) {
+  if (!capabilities) return [];
+  return WORKSPACE_ACTIONS.filter(({ action }) => capabilities[action]?.state === 'supported');
 }
