@@ -1,6 +1,6 @@
 # TapPad Mobile App
 
-Expo/React Native shell for discovering nearby TapPad Desktop Hosts over DNS-SD and opening the existing Mobile Input Surface.
+Expo/React Native app for discovering nearby TapPad Desktop Hosts over DNS-SD and presenting the native Mobile Input Surface.
 
 ## Development
 
@@ -13,4 +13,4 @@ pnpm run ios
 
 For Android, connect a physical device and run `pnpm run android`. Physical devices are the reliable validation target because emulator networking commonly does not forward multicast DNS traffic.
 
-The app browses `_tappad._tcp.local`. A discovered host must still pass TapPad's token authorization before the credential is saved in the platform secure store. After a successful pairing, the app reconnects to that host automatically and loads the host-served control UI.
+The app browses `_tappad._tcp.local`. A discovered host must still pass TapPad's token authorization before the credential is saved in the platform secure store. After a successful pairing, the app reconnects to that host automatically and opens native Pad, Keys, Actions, and Media panels using the existing Host WebSocket protocol.

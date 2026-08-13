@@ -16,7 +16,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
-import { WebView } from 'react-native-webview';
+
+import { NativeControlSurface } from './src/NativeControlSurface';
 
 const SERVICE_TYPE = 'tappad';
 const PAIRINGS_KEY = 'tappad.pairings.v1';
@@ -24,6 +25,7 @@ const CONNECTION_TIMEOUT_MS = 5_000;
 
 type Pairing = { hostId: string; token: string };
 type Pairings = Record<string, Pairing>;
+type ConnectedHost = { host: string; name: string; port: number; token: string };
 
 function serviceKey(service: Service) {
   return `${service.name}|${service.type}|${service.domain}`;
@@ -52,11 +54,6 @@ function connectionHost(service: Service) {
   const address = service.addresses.find((candidate) => candidate.includes('.')) ?? service.addresses[0];
   if (!address) throw new Error('The host did not publish a reachable address.');
   return urlHost(address);
-}
-
-function httpUrl(service: Service, token: string) {
-  const path = service.txt.path?.startsWith('/') ? service.txt.path : '/';
-  return `http://${connectionHost(service)}:${service.port}${path}?token=${encodeURIComponent(token)}`;
 }
 
 function websocketUrl(service: Service, token: string) {
@@ -112,7 +109,7 @@ function AppContent() {
   const [pairings, setPairings] = useState<Pairings>({});
   const [selected, setSelected] = useState<Service | null>(null);
   const [token, setToken] = useState('');
-  const [connectedUrl, setConnectedUrl] = useState<string | null>(null);
+  const [connectedHost, setConnectedHost] = useState<ConnectedHost | null>(null);
   const [discovering, setDiscovering] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [autoReconnectEnabled, setAutoReconnectEnabled] = useState(true);
@@ -178,7 +175,12 @@ function AppContent() {
       setPairings(nextPairings);
       setSelected(null);
       setToken('');
-      setConnectedUrl(httpUrl(service, normalizedToken));
+      setConnectedHost({
+        host: connectionHost(service),
+        name: displayName(service),
+        port: service.port,
+        token: normalizedToken,
+      });
       return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not connect to this host.');
@@ -206,7 +208,7 @@ function AppContent() {
   }, [connect, pairings]);
 
   useEffect(() => {
-    if (!autoReconnectEnabled || connectedUrl || selected || connecting) return;
+    if (!autoReconnectEnabled || connectedHost || selected || connecting) return;
     const pairedHost = hosts.find((service) => pairings[hostId(service)]);
     if (!pairedHost) return;
 
@@ -214,35 +216,20 @@ function AppContent() {
     if (attemptedReconnects.current.has(key)) return;
     attemptedReconnects.current.add(key);
     void connect(pairedHost, pairings[hostId(pairedHost)].token);
-  }, [autoReconnectEnabled, connect, connectedUrl, connecting, hosts, pairings, selected]);
+  }, [autoReconnectEnabled, connect, connectedHost, connecting, hosts, pairings, selected]);
 
-  if (connectedUrl) {
+  if (connectedHost) {
     return (
-      <SafeAreaView style={styles.webContainer}>
-        <StatusBar style="light" />
-        <View style={styles.webNavigation}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back to hosts"
-            onPress={() => {
-              setAutoReconnectEnabled(false);
-              setConnectedUrl(null);
-            }}
-            style={styles.hostsButton}
-          >
-            <Text style={styles.hostsButtonText}>‹ Hosts</Text>
-          </Pressable>
-        </View>
-        <View style={styles.webContent}>
-          <WebView
-            source={{ uri: connectedUrl }}
-            style={styles.webView}
-            originWhitelist={['http://*', 'https://*']}
-            allowsBackForwardNavigationGestures={false}
-            onHttpError={(event) => setError(`Host returned HTTP ${event.nativeEvent.statusCode}.`)}
-          />
-        </View>
-      </SafeAreaView>
+      <NativeControlSurface
+        host={connectedHost.host}
+        hostName={connectedHost.name}
+        port={connectedHost.port}
+        token={connectedHost.token}
+        onExit={() => {
+          setAutoReconnectEnabled(false);
+          setConnectedHost(null);
+        }}
+      />
     );
   }
 
@@ -365,10 +352,4 @@ const styles = StyleSheet.create({
   primaryButton: { flex: 1, height: 50, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#4361EE' },
   primaryButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
   buttonDisabled: { opacity: 0.65 },
-  webContainer: { flex: 1, backgroundColor: '#171A21' },
-  webNavigation: { height: 40, justifyContent: 'center', backgroundColor: '#171A21', paddingHorizontal: 8 },
-  hostsButton: { alignSelf: 'flex-start', minHeight: 36, justifyContent: 'center', paddingHorizontal: 10, borderRadius: 10 },
-  hostsButtonText: { color: '#AFC0FF', fontSize: 14, fontWeight: '700' },
-  webContent: { flex: 1 },
-  webView: { flex: 1, backgroundColor: '#111318' },
 });
