@@ -23,7 +23,7 @@ use tokio::{net::TcpListener, sync::Mutex, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    actions::{action_capabilities, run_named_action},
+    actions::{DesktopActions, action_capabilities, platform_actions},
     diagnostics::{record_action_attempt, record_action_failure, record_action_success},
     discovery,
     host_surface::{HostSurfaceState, host_surface_state, render_mobile_index},
@@ -44,6 +44,7 @@ struct WsQuery {
 
 pub struct BackendRuntime {
     input: Arc<Mutex<InputDevice>>,
+    actions: DesktopActions,
     router: Mutex<ProtocolRouter>,
     settings: RuntimeSettings,
 }
@@ -55,8 +56,10 @@ pub struct RunningBackend {
 
 impl BackendRuntime {
     pub fn new(settings: RuntimeSettings) -> io::Result<Self> {
+        let input = Arc::new(Mutex::new(InputDevice::new()?));
         Ok(Self {
-            input: Arc::new(Mutex::new(InputDevice::new()?)),
+            input,
+            actions: platform_actions(),
             router: Mutex::new(ProtocolRouter::new()),
             settings,
         })
@@ -222,11 +225,11 @@ async fn apply_backend_effect(state: Arc<BackendRuntime>, client_id: &str, effec
             });
         }
         BackendEffect::Cmd { action } => {
-            let input = state.input.clone();
+            let state = Arc::clone(&state);
             let client_id = client_id.to_string();
             tokio::spawn(async move {
                 record_action_attempt(&action);
-                match run_named_action(input, &action).await {
+                match state.actions.run(state.input.clone(), &action).await {
                     Ok(()) => record_action_success(&action),
                     Err(error) => {
                         record_action_failure(&action, &error.to_string());
