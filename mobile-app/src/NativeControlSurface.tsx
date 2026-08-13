@@ -3,17 +3,18 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
-  KeyboardAvoidingView,
+  Keyboard,
+  type KeyboardEvent,
   PanResponder,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { createLatestFrameCoalescer } from './frameCoalescer';
 import {
@@ -25,6 +26,7 @@ import {
   type GestureState,
   type Point,
 } from './gestureState';
+import { keyboardInsetFromFrame } from './keyboard-insets';
 import {
   hostStateUrl,
   POINTER_BUTTONS,
@@ -410,6 +412,11 @@ function PadPanel({
 }: PadProps) {
   const [text, setText] = useState('');
   const [windowMode, setWindowMode] = useState(false);
+  const [keyboardScreenY, setKeyboardScreenY] = useState<number | null>(
+    () => Keyboard.metrics()?.screenY ?? null,
+  );
+  const { height: windowHeight } = useWindowDimensions();
+  const { bottom: bottomSafeArea } = useSafeAreaInsets();
   const gestureRef = useRef<GestureState | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -418,6 +425,22 @@ function PadPanel({
     (dy) => send({ type: 'wheel', dy }),
     { request: requestAnimationFrame, cancel: cancelAnimationFrame },
   ), [send]);
+  // Edge-to-edge Android windows can keep their full reported height while the IME overlays them.
+  const keyboardInset = keyboardInsetFromFrame(windowHeight, keyboardScreenY, bottomSafeArea);
+
+  useEffect(() => {
+    const show = (event: KeyboardEvent) => {
+      setKeyboardScreenY(event.endCoordinates.screenY);
+    };
+    const showSubscription = Keyboard.addListener('keyboardDidShow', show);
+    const frameSubscription = Keyboard.addListener('keyboardDidChangeFrame', show);
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setKeyboardScreenY(null));
+    return () => {
+      showSubscription.remove();
+      frameSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const clearLongPress = useCallback(() => {
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
@@ -556,7 +579,7 @@ function PadPanel({
   }, [send, setNotice, text]);
 
   return (
-    <KeyboardAvoidingView style={styles.padPanel} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={[styles.padPanel, keyboardInset > 0 && { paddingBottom: keyboardInset + theme.space.sm }]}>
       <View
         {...panResponder.panHandlers}
         accessibilityRole="adjustable"
@@ -596,7 +619,7 @@ function PadPanel({
           <KeyButton key={code} label={label} code={code} onDown={pressKey} onUp={releaseKey} compact />
         ))}
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
