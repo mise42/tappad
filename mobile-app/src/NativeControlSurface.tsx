@@ -20,6 +20,7 @@ import { createLatestFrameCoalescer } from './frameCoalescer';
 import {
   CODEX_VOICE_END_ACTION,
   CODEX_VOICE_MICROPHONE_ACTION,
+  CODEX_VOICE_START_FOREGROUND_ACTION,
   codexVoiceControl,
   codexVoiceResultNotice,
   codexVoiceSentNotice,
@@ -155,6 +156,7 @@ function statusText(state: ConnectionState) {
 
 function codexVoiceIcon(action: string): ComponentProps<typeof MaterialCommunityIcons>['name'] {
   switch (action) {
+    case CODEX_VOICE_START_FOREGROUND_ACTION: return 'account-voice';
     case CODEX_VOICE_END_ACTION: return 'phone-hangup';
     case CODEX_VOICE_MICROPHONE_ACTION: return 'microphone-off';
     default: return 'microphone-outline';
@@ -803,7 +805,7 @@ function ActionsPanel({ capabilities, capabilityError, hostName, sendAction }: {
             ))}
           </View>
           {codexVoice.foregroundRequired ? (
-            <Text style={styles.codexForegroundHint}>End and Mute require Codex foreground.</Text>
+            <Text style={styles.codexForegroundHint}>App controls require Codex foreground.</Text>
           ) : null}
         </View>
       ) : null}

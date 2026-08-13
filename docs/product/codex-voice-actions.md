@@ -6,6 +6,7 @@ the Desktop Host owns capability discovery and target-specific execution.
 | Action id | Intended result | Audited Linux scope | Current availability |
 | --- | --- | --- | --- |
 | `codex.voice.start` | Dispatch Codex's configured Voice Chat hotkey | `os-global` | Supported only while Codex desktop is installed, running, and has a readable, safely dispatchable `realtimeVoice` binding |
+| `codex.voice.start_foreground` | Send Codex's app-scoped Toggle Voice Chat shortcut | `app` | Supported only when the installed `composer.startVoiceMode` command metadata is safely readable and Codex is strongly verified as foreground |
 | `codex.voice.end` | Send Codex's configured End Voice Chat shortcut | `app` | Supported only while the foreground Hyprland window is strongly verified as the installed Codex app |
 | `codex.voice.toggle_microphone` | Send Codex's configured microphone shortcut | `app` | Supported only while the foreground Hyprland window is strongly verified as the installed Codex app |
 
@@ -28,6 +29,16 @@ before dispatch. It never focuses or restores Codex. A successful result means
 only that the configured app shortcut was sent; it does not confirm that a
 session ended or microphone state changed.
 
+`codex.voice.start_foreground` is separate from the OS-global Start action. The
+Host verifies from the installed Codex ASAR command registry that
+`composer.startVoiceMode` is app-scoped. Its effective binding follows Codex's
+own precedence: a unique user keybinding override wins; otherwise the unique
+Linux/default binding is read from the installed command metadata. The Host
+does not hardcode that default. Malformed, missing, ambiguous, or scope-mismatched
+metadata makes the capability unavailable. Foreground identity and final
+pre-dispatch rechecks are identical to End and Mute. Success means only that the
+effective shortcut was sent, not that voice chat started.
+
 Other unavailable conditions use stable reason codes so a future client can
 explain the boundary without parsing prose:
 
@@ -44,6 +55,11 @@ explain the boundary without parsing prose:
 - `codex_app_binding_missing`
 - `codex_app_binding_ambiguous`
 - `codex_app_binding_unsupported`
+- `codex_app_metadata_unreadable`
+- `codex_app_metadata_ambiguous`
+- `codex_app_command_missing`
+- `codex_app_command_ambiguous`
+- `codex_app_command_scope_mismatch`
 - `codex_not_foreground`
 - `codex_foreground_unreadable`
 - `codex_foreground_identity_mismatch`
@@ -51,10 +67,11 @@ explain the boundary without parsing prose:
 No action accepts a raw shell command from a client. Execution remains inside
 the Command Registry and platform adapter boundary.
 
-The native Actions panel renders compact Start, End, and Mute buttons when the
-Host advertises Codex voice capabilities. Start retains its OS-global gate. End
-and Mute are enabled only for supported app-scoped capabilities; otherwise they
-stay visible with a short disabled label. While Actions is visible, the app
+The native Actions panel renders compact Start, Start here, End, and Mute
+buttons when the Host advertises Codex voice capabilities. Start retains its
+OS-global gate. Start here, End, and Mute are enabled only for supported
+app-scoped capabilities; otherwise they stay visible with a short disabled
+label. While Actions is visible, the app
 refreshes capabilities so foreground changes are reflected without reconnecting.
 Platforms that advertise only the unverified `unknown` scope keep the existing
 Actions UI and omit this Linux-specific control group.

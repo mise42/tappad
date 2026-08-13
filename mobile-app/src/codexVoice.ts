@@ -1,6 +1,7 @@
 import type { ActionCapabilities, ActionCapability } from './protocol';
 
 export const CODEX_VOICE_START_ACTION = 'codex.voice.start';
+export const CODEX_VOICE_START_FOREGROUND_ACTION = 'codex.voice.start_foreground';
 export const CODEX_VOICE_END_ACTION = 'codex.voice.end';
 export const CODEX_VOICE_MICROPHONE_ACTION = 'codex.voice.toggle_microphone';
 
@@ -37,6 +38,11 @@ const APP_FAILURE_COPY: Record<string, { detail: string; disabledLabel: string }
   codex_app_binding_missing: { detail: 'Shortcut not configured.', disabledLabel: 'Not set' },
   codex_app_binding_ambiguous: { detail: 'Shortcut binding is ambiguous.', disabledLabel: 'Unavailable' },
   codex_app_binding_unsupported: { detail: 'Shortcut binding is unsupported.', disabledLabel: 'Unavailable' },
+  codex_app_metadata_unreadable: { detail: 'Command metadata unavailable.', disabledLabel: 'Unavailable' },
+  codex_app_metadata_ambiguous: { detail: 'Command metadata is ambiguous.', disabledLabel: 'Unavailable' },
+  codex_app_command_missing: { detail: 'App command unavailable.', disabledLabel: 'Unavailable' },
+  codex_app_command_ambiguous: { detail: 'App command is ambiguous.', disabledLabel: 'Unavailable' },
+  codex_app_command_scope_mismatch: { detail: 'App command scope is unsupported.', disabledLabel: 'Unavailable' },
   codex_not_installed: { detail: 'Codex was not found.', disabledLabel: 'Unavailable' },
   codex_home_unavailable: { detail: 'Keybindings unavailable.', disabledLabel: 'Unavailable' },
   codex_bindings_unreadable: { detail: 'Keybindings unavailable.', disabledLabel: 'Unavailable' },
@@ -86,14 +92,16 @@ export function codexVoiceControl(capabilities: ActionCapabilities | null): Code
   if (!capabilities) return null;
 
   const start = capabilities[CODEX_VOICE_START_ACTION];
+  const foregroundStart = capabilities[CODEX_VOICE_START_FOREGROUND_ACTION];
   const end = capabilities[CODEX_VOICE_END_ACTION];
   const microphone = capabilities[CODEX_VOICE_MICROPHONE_ACTION];
-  if (!start && !end && !microphone) return null;
-  if (![start, end, microphone].some(
+  if (!start && !foregroundStart && !end && !microphone) return null;
+  if (![start, foregroundStart, end, microphone].some(
     (capability) => capability?.scope === 'os-global' || capability?.scope === 'app',
   )) return null;
 
   const appActions = [
+    appAction(CODEX_VOICE_START_FOREGROUND_ACTION, 'Start here', foregroundStart),
     appAction(CODEX_VOICE_END_ACTION, 'End', end),
     appAction(CODEX_VOICE_MICROPHONE_ACTION, 'Mute', microphone),
   ].filter((action): action is CodexVoiceAction => action !== null);
@@ -107,6 +115,7 @@ export function codexVoiceControl(capabilities: ActionCapabilities | null): Code
 
 export function isCodexVoiceAction(action: string | undefined): action is string {
   return action === CODEX_VOICE_START_ACTION
+    || action === CODEX_VOICE_START_FOREGROUND_ACTION
     || action === CODEX_VOICE_END_ACTION
     || action === CODEX_VOICE_MICROPHONE_ACTION;
 }
@@ -115,6 +124,8 @@ export function codexVoiceSentNotice(action: string, hostName: string) {
   switch (action) {
     case CODEX_VOICE_START_ACTION:
       return `Sending the configured Codex voice hotkey to ${hostName}…`;
+    case CODEX_VOICE_START_FOREGROUND_ACTION:
+      return `Sending the foreground Start shortcut to ${hostName}…`;
     case CODEX_VOICE_END_ACTION:
       return `Sending End shortcut to ${hostName}…`;
     case CODEX_VOICE_MICROPHONE_ACTION:
@@ -133,6 +144,8 @@ export function codexVoiceResultNotice(
     switch (action) {
       case CODEX_VOICE_START_ACTION:
         return 'Configured Codex voice hotkey sent. Voice session status is not confirmed.';
+      case CODEX_VOICE_START_FOREGROUND_ACTION:
+        return 'Foreground Start shortcut sent. Voice session status is not confirmed.';
       case CODEX_VOICE_END_ACTION:
         return 'End shortcut sent. Voice state is not confirmed.';
       case CODEX_VOICE_MICROPHONE_ACTION:
@@ -142,6 +155,7 @@ export function codexVoiceResultNotice(
   if (message?.toLowerCase().includes('foreground')) {
     return 'Blocked: focus Codex and try again.';
   }
+  if (action === CODEX_VOICE_START_FOREGROUND_ACTION) return 'Foreground Start shortcut could not be sent.';
   if (action === CODEX_VOICE_END_ACTION) return 'End shortcut could not be sent.';
   if (action === CODEX_VOICE_MICROPHONE_ACTION) return 'Mute shortcut could not be sent.';
   return message || 'The Host could not send the configured Codex voice hotkey.';

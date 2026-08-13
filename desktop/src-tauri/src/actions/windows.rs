@@ -24,14 +24,15 @@ impl DesktopActionAdapter for WindowsActionAdapter {
 
     fn capability(&self, action: &str) -> CapabilityStatus {
         match action {
-            "codex.voice.start" | "codex.voice.end" | "codex.voice.toggle_microphone" => {
-                super::scoped_capability(
-                    "unavailable",
-                    "Codex voice shortcut control has only been verified for the Linux desktop host.",
-                    "unknown",
-                    Some("codex_platform_not_verified"),
-                )
-            }
+            "codex.voice.start"
+            | "codex.voice.start_foreground"
+            | "codex.voice.end"
+            | "codex.voice.toggle_microphone" => super::scoped_capability(
+                "unavailable",
+                "Codex voice shortcut control has only been verified for the Linux desktop host.",
+                "unknown",
+                Some("codex_platform_not_verified"),
+            ),
             "screenrecord.screen" => capability(
                 "downgraded",
                 Some(

@@ -70,6 +70,7 @@ pub const ACTION_IDS: &[&str] = &[
     "media.mute",
     "media.volume_up",
     "codex.voice.start",
+    "codex.voice.start_foreground",
     "codex.voice.end",
     "codex.voice.toggle_microphone",
 ];
@@ -88,7 +89,10 @@ pub const OMARCHY_ACTION_IDS: &[&str] = &[
 pub fn reports_execution_result(action: &str) -> bool {
     matches!(
         action,
-        "codex.voice.start" | "codex.voice.end" | "codex.voice.toggle_microphone"
+        "codex.voice.start"
+            | "codex.voice.start_foreground"
+            | "codex.voice.end"
+            | "codex.voice.toggle_microphone"
     )
 }
 
@@ -96,6 +100,9 @@ pub fn execution_success_message(action: &str) -> Option<&'static str> {
     match action {
         "codex.voice.start" => Some(
             "The Host dispatched Codex's configured voice hotkey. Voice session status is not confirmed.",
+        ),
+        "codex.voice.start_foreground" => Some(
+            "The Host sent Codex's effective foreground Voice Chat shortcut while Codex was foreground. Voice session status is not confirmed.",
         ),
         "codex.voice.end" => Some(
             "The Host sent Codex's configured End Voice Chat shortcut while Codex was foreground. Voice session status is not confirmed.",
@@ -426,7 +433,7 @@ mod tests {
                 .iter()
                 .filter(|action| action.starts_with("codex.voice."))
                 .count(),
-            3
+            4
         );
     }
 
@@ -434,6 +441,7 @@ mod tests {
     fn every_codex_voice_action_reports_dispatch_completion_without_claiming_state() {
         for action in [
             "codex.voice.start",
+            "codex.voice.start_foreground",
             "codex.voice.end",
             "codex.voice.toggle_microphone",
         ] {

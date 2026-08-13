@@ -12,11 +12,15 @@ use crate::input::InputDevice;
 
 use super::{ActionError, CapabilityStatus, scoped_capability};
 
+mod metadata;
+
 pub(super) const START_VOICE_ACTION: &str = "codex.voice.start";
+pub(super) const START_FOREGROUND_VOICE_ACTION: &str = "codex.voice.start_foreground";
 pub(super) const END_VOICE_ACTION: &str = "codex.voice.end";
 pub(super) const TOGGLE_MICROPHONE_ACTION: &str = "codex.voice.toggle_microphone";
 
 const START_VOICE_COMMAND: &str = "realtimeVoice";
+const START_FOREGROUND_VOICE_COMMAND: &str = "composer.startVoiceMode";
 const END_VOICE_COMMAND: &str = "realtimeVoice.endCall";
 const TOGGLE_MICROPHONE_COMMAND: &str = "realtimeVoice.toggleMicrophoneMute";
 const GLOBAL_SCOPE: &str = "os-global";
@@ -27,6 +31,10 @@ const CODEX_EXECUTABLES: &[&str] = &[
     "/usr/bin/chatgpt",
     "/usr/bin/codex-desktop",
     "/usr/lib/chatgpt/ChatGPT",
+];
+const CODEX_APP_ARCHIVES: &[&str] = &[
+    "/usr/lib/chatgpt/resources/app.asar",
+    "/usr/lib/codex-desktop/resources/app.asar",
 ];
 
 #[derive(Debug, Deserialize)]
@@ -58,6 +66,7 @@ struct ProbeError {
 struct ProbePaths {
     keybindings: PathBuf,
     executables: Vec<PathBuf>,
+    app_archives: Vec<PathBuf>,
     proc_root: PathBuf,
 }
 
@@ -71,6 +80,7 @@ impl ProbePaths {
         Ok(Self {
             keybindings: PathBuf::from(home).join(".codex/keybindings.json"),
             executables: CODEX_EXECUTABLES.iter().map(PathBuf::from).collect(),
+            app_archives: CODEX_APP_ARCHIVES.iter().map(PathBuf::from).collect(),
             proc_root: PathBuf::from("/proc"),
         })
     }
@@ -79,13 +89,20 @@ impl ProbePaths {
 pub(super) fn is_codex_action(action: &str) -> bool {
     matches!(
         action,
-        START_VOICE_ACTION | END_VOICE_ACTION | TOGGLE_MICROPHONE_ACTION
+        START_VOICE_ACTION
+            | START_FOREGROUND_VOICE_ACTION
+            | END_VOICE_ACTION
+            | TOGGLE_MICROPHONE_ACTION
     )
 }
 
 pub(super) fn capability(action: &str) -> Option<CapabilityStatus> {
     match action {
         START_VOICE_ACTION => Some(start_voice_capability()),
+        START_FOREGROUND_VOICE_ACTION => Some(app_voice_capability(
+            "Toggle Voice Chat in Codex",
+            START_FOREGROUND_VOICE_COMMAND,
+        )),
         END_VOICE_ACTION => Some(app_voice_capability("End Voice Chat", END_VOICE_COMMAND)),
         TOGGLE_MICROPHONE_ACTION => Some(app_voice_capability(
             "Toggle Voice Chat microphone",
@@ -112,13 +129,18 @@ pub(super) async fn execute(
             .map_err(|error| ActionError::failed("Linux", action, error));
     }
 
-    let command = match action {
-        END_VOICE_ACTION => END_VOICE_COMMAND,
-        TOGGLE_MICROPHONE_ACTION => TOGGLE_MICROPHONE_COMMAND,
+    let (command, uses_installed_default) = match action {
+        START_FOREGROUND_VOICE_ACTION => (START_FOREGROUND_VOICE_COMMAND, true),
+        END_VOICE_ACTION => (END_VOICE_COMMAND, false),
+        TOGGLE_MICROPHONE_ACTION => (TOGGLE_MICROPHONE_COMMAND, false),
         _ => return Err(ActionError::unknown(action)),
     };
-    let binding = resolve_app_binding(&paths, command)
-        .map_err(|error| ActionError::unavailable("Linux", action, error.detail))?;
+    let binding = if uses_installed_default {
+        resolve_effective_app_binding(&paths, command)
+    } else {
+        resolve_app_binding(&paths, command)
+    }
+    .map_err(|error| ActionError::unavailable("Linux", action, error.detail))?;
     let codes: Vec<&str> = binding.input_codes.iter().map(String::as_str).collect();
     let mut input = input.lock().await;
     let active_window = read_hyprland_active_window_async()
@@ -187,7 +209,16 @@ fn app_voice_capability_for(
     command: &str,
     active_window: &str,
 ) -> CapabilityStatus {
-    match probe_app_binding(paths, command, active_window) {
+    let binding = if command == START_FOREGROUND_VOICE_COMMAND {
+        resolve_effective_app_binding(paths, command)
+    } else {
+        resolve_app_binding(paths, command)
+    }
+    .and_then(|binding| {
+        verify_codex_foreground(paths, active_window)?;
+        Ok(binding)
+    });
+    match binding {
         Ok(binding) => {
             let mut capability = scoped_capability(
                 "supported",
@@ -257,6 +288,7 @@ fn probe_start_binding(paths: &ProbePaths) -> Result<StartBinding, ProbeError> {
     })
 }
 
+#[cfg(test)]
 fn probe_app_binding(
     paths: &ProbePaths,
     command: &str,
@@ -293,6 +325,92 @@ fn resolve_app_binding(paths: &ProbePaths, command: &str) -> Result<StartBinding
     Ok(StartBinding {
         accelerator: binding.key,
         input_codes,
+    })
+}
+
+fn resolve_effective_app_binding(
+    paths: &ProbePaths,
+    command: &str,
+) -> Result<StartBinding, ProbeError> {
+    verify_codex_installed(paths)?;
+    let default_binding = installed_app_default_binding(paths, command)?;
+    let bindings = read_keybindings(&paths.keybindings)?;
+    let matching_bindings = bindings
+        .into_iter()
+        .filter(|binding| binding.command == command)
+        .collect::<Vec<_>>();
+    let accelerator = match matching_bindings.as_slice() {
+        [] => default_binding,
+        [binding] => binding.key.clone(),
+        _ => {
+            return Err(ProbeError {
+                reason_code: "codex_app_binding_ambiguous",
+                detail: "Codex has more than one binding for this app shortcut.".to_string(),
+            });
+        }
+    };
+    let input_codes = parse_accelerator(&accelerator).map_err(|_| ProbeError {
+        reason_code: "codex_app_binding_unsupported",
+        detail: format!(
+            "Codex's effective app shortcut ({accelerator}) cannot be dispatched safely."
+        ),
+    })?;
+    Ok(StartBinding {
+        accelerator,
+        input_codes,
+    })
+}
+
+fn installed_app_default_binding(paths: &ProbePaths, command: &str) -> Result<String, ProbeError> {
+    let archives = paths
+        .app_archives
+        .iter()
+        .filter(|archive| archive.is_file())
+        .collect::<Vec<_>>();
+    let archive = match archives.as_slice() {
+        [archive] => *archive,
+        [] => {
+            return Err(ProbeError {
+                reason_code: "codex_app_metadata_unreadable",
+                detail: "TapPad could not find the installed Codex command metadata.".to_string(),
+            });
+        }
+        _ => {
+            return Err(ProbeError {
+                reason_code: "codex_app_metadata_ambiguous",
+                detail: "TapPad found more than one installed Codex command archive.".to_string(),
+            });
+        }
+    };
+    metadata::read_app_default_binding(archive, command).map_err(|error| match error {
+        metadata::MetadataError::Unreadable(detail) | metadata::MetadataError::Invalid(detail) => {
+            ProbeError {
+                reason_code: "codex_app_metadata_unreadable",
+                detail: format!("TapPad could not safely read Codex command metadata: {detail}"),
+            }
+        }
+        metadata::MetadataError::CommandMissing => ProbeError {
+            reason_code: "codex_app_command_missing",
+            detail: "The installed Codex app does not register this app shortcut.".to_string(),
+        },
+        metadata::MetadataError::CommandAmbiguous => ProbeError {
+            reason_code: "codex_app_command_ambiguous",
+            detail: "The installed Codex app registers this command more than once.".to_string(),
+        },
+        metadata::MetadataError::ScopeMismatch => ProbeError {
+            reason_code: "codex_app_command_scope_mismatch",
+            detail: "The installed Codex command is not declared app-scoped.".to_string(),
+        },
+        metadata::MetadataError::DefaultBindingMissing => ProbeError {
+            reason_code: "codex_app_binding_missing",
+            detail: "The Codex app shortcut has no configured or installed default binding."
+                .to_string(),
+        },
+        metadata::MetadataError::DefaultBindingAmbiguous => ProbeError {
+            reason_code: "codex_app_binding_ambiguous",
+            detail: "The Codex app shortcut has more than one installed default binding."
+                .to_string(),
+        },
     })
 }
 
@@ -543,7 +661,7 @@ fn codex_is_running(proc_root: &Path) -> std::io::Result<bool> {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::os::unix::fs::symlink;
+    use std::{io::Write, os::unix::fs::symlink};
     use tempfile::TempDir;
 
     fn fixture(bindings: serde_json::Value, running: bool) -> (TempDir, ProbePaths) {
@@ -565,6 +683,7 @@ mod tests {
             ProbePaths {
                 keybindings,
                 executables: vec![executable],
+                app_archives: Vec::new(),
                 proc_root,
             },
         )
@@ -577,6 +696,100 @@ mod tests {
             "pid": pid,
         })
         .to_string()
+    }
+
+    fn install_metadata_archive(temp: &TempDir, paths: &mut ProbePaths, record: &str) {
+        let source = format!("let commands=[{{id:`before`}},{record},{{id:`after`}}];");
+        let header = json!({
+            "files": {
+                "webview": {"files": {
+                    "assets": {"files": {
+                        "app-initial-fixture.js": {
+                            "size": source.len(),
+                            "offset": "0"
+                        }
+                    }}
+                }}
+            }
+        })
+        .to_string();
+        let padding = (4 - ((4 + header.len()) % 4)) % 4;
+        let header_pickle_payload = 4 + header.len() + padding;
+        let header_size = 4 + header_pickle_payload;
+        let archive = temp.path().join("app.asar");
+        let mut file = fs::File::create(&archive).expect("archive");
+        file.write_all(&4_u32.to_le_bytes()).expect("size payload");
+        file.write_all(&(header_size as u32).to_le_bytes())
+            .expect("header size");
+        file.write_all(&(header_pickle_payload as u32).to_le_bytes())
+            .expect("header payload");
+        file.write_all(&(header.len() as u32).to_le_bytes())
+            .expect("json size");
+        file.write_all(header.as_bytes()).expect("header");
+        file.write_all(&vec![0; padding]).expect("padding");
+        file.write_all(source.as_bytes()).expect("source");
+        paths.app_archives = vec![archive];
+    }
+
+    #[test]
+    fn foreground_start_resolves_installed_default_or_user_override() {
+        let (temp, mut paths) = fixture(json!([]), true);
+        install_metadata_archive(
+            &temp,
+            &mut paths,
+            "{id:`composer.startVoiceMode`,shortcutScope:`app`,electron:{defaultKeybindings:[{key:`Ctrl+Shift+V`}]}}",
+        );
+
+        assert_eq!(
+            resolve_effective_app_binding(&paths, START_FOREGROUND_VOICE_COMMAND),
+            Ok(StartBinding {
+                accelerator: "Ctrl+Shift+V".to_string(),
+                input_codes: vec![
+                    "ControlLeft".to_string(),
+                    "ShiftLeft".to_string(),
+                    "KeyV".to_string(),
+                ],
+            })
+        );
+        let capability = app_voice_capability_for(
+            &paths,
+            "Toggle Voice Chat in Codex",
+            START_FOREGROUND_VOICE_COMMAND,
+            &active_window("chatgpt", "chatgpt", 1234),
+        );
+        assert_eq!(capability.state, "supported");
+        assert_eq!(capability.scope, Some(APP_SCOPE));
+        assert_eq!(capability.binding.as_deref(), Some("Ctrl+Shift+V"));
+        let background = app_voice_capability_for(
+            &paths,
+            "Toggle Voice Chat in Codex",
+            START_FOREGROUND_VOICE_COMMAND,
+            &active_window("terminal", "terminal", 1234),
+        );
+        assert_eq!(background.state, "unavailable");
+        assert_eq!(background.scope, Some(APP_SCOPE));
+        assert_eq!(background.reason_code, Some("codex_not_foreground"));
+
+        fs::write(
+            &paths.keybindings,
+            json!([{"command": START_FOREGROUND_VOICE_COMMAND, "key": "F5"}]).to_string(),
+        )
+        .expect("override");
+        assert_eq!(
+            resolve_effective_app_binding(&paths, START_FOREGROUND_VOICE_COMMAND),
+            Ok(StartBinding {
+                accelerator: "F5".to_string(),
+                input_codes: vec!["F5".to_string()],
+            })
+        );
+    }
+
+    #[test]
+    fn foreground_start_fails_closed_without_authoritative_command_metadata() {
+        let (_temp, paths) = fixture(json!([]), true);
+        let error = resolve_effective_app_binding(&paths, START_FOREGROUND_VOICE_COMMAND)
+            .expect_err("metadata is required");
+        assert_eq!(error.reason_code, "codex_app_metadata_unreadable");
     }
 
     #[test]
