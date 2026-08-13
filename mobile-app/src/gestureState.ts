@@ -1,4 +1,4 @@
-export const LONG_PRESS_DELAY_MS = 520;
+export const LONG_PRESS_DELAY_MS = 350;
 export const TAP_MAX_DURATION_MS = 220;
 export const TAP_MAX_TRAVEL = 10;
 

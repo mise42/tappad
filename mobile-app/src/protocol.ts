@@ -2,6 +2,7 @@ export type TapPadMessage =
   | { type: 'move'; dx: number; dy: number }
   | { type: 'wheel'; dy: number }
   | { type: 'click'; button: 'left' | 'right' | 'middle'; clickCount?: number }
+  | { type: 'pointerButton'; button: PointerButton; down: boolean }
   | { type: 'key'; code: string; down: boolean }
   | { type: 'text'; value: string }
   | { type: 'paste'; value: string }
@@ -20,7 +21,32 @@ export type ActionCapabilities = Record<string, ActionCapability>;
 
 export type HostState = {
   actions?: ActionCapabilities;
+  protocol?: {
+    version?: number;
+    inputCapabilities?: InputCapabilities;
+  };
 };
+
+export type PointerButton = 'left' | 'right' | 'middle';
+
+export type InputCapability = {
+  state?: string;
+  note?: string;
+};
+
+export type InputCapabilities = {
+  pointerButton?: InputCapability;
+};
+
+export type ServerMessage = {
+  type?: string;
+  protocolVersion?: number;
+  inputCapabilities?: InputCapabilities;
+  code?: string;
+  message?: string;
+};
+
+export const POINTER_BUTTONS = ['left', 'right', 'middle'] as const;
 
 export const RELEASABLE_KEYS = [
   'Escape', 'Tab', 'Enter', 'Backspace', 'PrintScreen',
@@ -44,4 +70,21 @@ export function serializeMessage(message: TapPadMessage) {
 
 export function releaseMessages(keys: Iterable<string>): TapPadMessage[] {
   return Array.from(keys, (code) => ({ type: 'key' as const, code, down: false }));
+}
+
+export function releaseInputMessages(
+  buttons: Iterable<PointerButton>,
+  keys: Iterable<string>,
+): TapPadMessage[] {
+  return [
+    ...Array.from(buttons, (button) => ({ type: 'pointerButton' as const, button, down: false })),
+    ...releaseMessages(keys),
+  ];
+}
+
+export function supportsPointerButton(message: ServerMessage) {
+  return (
+    (message.protocolVersion ?? 0) >= 2 &&
+    message.inputCapabilities?.pointerButton?.state === 'supported'
+  );
 }

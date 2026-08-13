@@ -1,3 +1,4 @@
+use serde::Serialize;
 use std::io;
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -16,6 +17,47 @@ use log::warn;
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub struct InputDevice {
     enigo: Enigo,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct InputCapabilityStatus {
+    pub state: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<&'static str>,
+}
+
+impl InputCapabilityStatus {
+    pub fn is_supported(&self) -> bool {
+        self.state == "supported"
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct InputCapabilities {
+    #[serde(rename = "pointerButton")]
+    pub pointer_button: InputCapabilityStatus,
+}
+
+pub fn input_capabilities() -> InputCapabilities {
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    {
+        InputCapabilities {
+            pointer_button: InputCapabilityStatus {
+                state: "supported",
+                note: None,
+            },
+        }
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        InputCapabilities {
+            pointer_button: InputCapabilityStatus {
+                state: "unsupported",
+                note: Some("Pointer button hold is unavailable on this target backend."),
+            },
+        }
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -47,11 +89,7 @@ impl InputDevice {
     }
 
     pub fn click(&mut self, button: &str, click_count: u8) -> io::Result<()> {
-        let button = match button {
-            "right" => Button::Right,
-            "middle" => Button::Middle,
-            _ => Button::Left,
-        };
+        let button = pointer_button(button)?;
 
         for _ in 0..click_count.max(1) {
             self.with_reconnect_on_stale_backend(|enigo| {
@@ -59,6 +97,15 @@ impl InputDevice {
             })?;
         }
         Ok(())
+    }
+
+    pub fn button(&mut self, button: &str, down: bool) -> io::Result<()> {
+        let button = pointer_button(button)?;
+        self.with_reconnect_on_stale_backend(|enigo| {
+            enigo
+                .button(button, if down { Press } else { Release })
+                .map_err(to_io_error)
+        })
     }
 
     pub fn key(&mut self, code_name: &str, down: bool) -> io::Result<()> {
@@ -170,6 +217,13 @@ impl InputDevice {
         Ok(())
     }
 
+    pub fn button(&mut self, _button: &str, _down: bool) -> io::Result<()> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "pointer button hold is unavailable on this target backend",
+        ))
+    }
+
     pub fn key(&mut self, _code_name: &str, _down: bool) -> io::Result<()> {
         Ok(())
     }
@@ -246,6 +300,19 @@ fn key_for_code(code: &str) -> Option<Key> {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn pointer_button(button: &str) -> io::Result<Button> {
+    match button {
+        "left" => Ok(Button::Left),
+        "right" => Ok(Button::Right),
+        "middle" => Ok(Button::Middle),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("unknown pointer button: {button}"),
+        )),
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn single_ascii_char(value: &str) -> Option<char> {
     let mut chars = value.chars();
     let ch = chars.next()?;
@@ -266,8 +333,22 @@ fn to_io_error(error: impl std::fmt::Debug) -> io::Error {
     any(target_os = "linux", target_os = "macos", target_os = "windows")
 ))]
 mod tests {
-    use super::{is_stale_input_backend_error, run_with_reconnect_on_stale_backend};
+    use super::{
+        input_capabilities, is_stale_input_backend_error, pointer_button,
+        run_with_reconnect_on_stale_backend,
+    };
     use std::io;
+
+    #[test]
+    fn supported_platform_adapter_advertises_pointer_button_hold() {
+        assert!(input_capabilities().pointer_button.is_supported());
+    }
+
+    #[test]
+    fn platform_adapter_rejects_unknown_pointer_buttons() {
+        let error = pointer_button("side").expect_err("unknown button should fail");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+    }
 
     #[test]
     fn retries_once_after_stale_wayland_queue_error() {

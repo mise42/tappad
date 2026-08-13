@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+use crate::input::InputCapabilities;
+
+pub const PROTOCOL_VERSION: u16 = 2;
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type")]
 pub enum ClientMessage {
@@ -13,6 +17,8 @@ pub enum ClientMessage {
         #[serde(default = "default_click_count", rename = "clickCount")]
         click_count: u8,
     },
+    #[serde(rename = "pointerButton")]
+    PointerButton { button: String, down: bool },
     #[serde(rename = "key")]
     Key {
         code: String,
@@ -32,22 +38,67 @@ fn default_click_count() -> u8 {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct ServerMessage {
-    #[serde(rename = "type")]
-    pub msg_type: &'static str,
-    pub host: String,
-    pub time: u64,
+#[serde(tag = "type")]
+pub enum ServerMessage {
+    #[serde(rename = "ready")]
+    Ready {
+        host: String,
+        time: u64,
+        #[serde(rename = "protocolVersion")]
+        protocol_version: u16,
+        #[serde(rename = "inputCapabilities")]
+        input_capabilities: InputCapabilities,
+    },
+    #[serde(rename = "error")]
+    Error { code: &'static str, message: String },
 }
 
 impl ServerMessage {
-    pub fn ready(host: String) -> Self {
-        Self {
-            msg_type: "ready",
+    pub fn ready(host: String, input_capabilities: InputCapabilities) -> Self {
+        Self::Ready {
             host,
             time: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as u64,
+            protocol_version: PROTOCOL_VERSION,
+            input_capabilities,
         }
+    }
+
+    pub fn error(code: &'static str, message: impl Into<String>) -> Self {
+        Self::Error {
+            code,
+            message: message.into(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::input::input_capabilities;
+
+    #[test]
+    fn ready_advertises_protocol_and_input_capabilities() {
+        let value = serde_json::to_value(ServerMessage::ready(
+            "host".to_string(),
+            input_capabilities(),
+        ))
+        .expect("ready JSON");
+
+        assert_eq!(value["type"], "ready");
+        assert_eq!(value["protocolVersion"], PROTOCOL_VERSION);
+        assert_eq!(
+            value["inputCapabilities"]["pointerButton"]["state"],
+            "supported"
+        );
+    }
+
+    #[test]
+    fn unknown_message_types_are_rejected_instead_of_coerced() {
+        let error = serde_json::from_str::<ClientMessage>(r#"{"type":"pointerMystery"}"#)
+            .expect_err("unknown message must fail");
+        assert!(error.to_string().contains("unknown variant"));
     }
 }

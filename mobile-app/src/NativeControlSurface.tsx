@@ -27,14 +27,18 @@ import {
 } from './gestureState';
 import {
   hostStateUrl,
+  POINTER_BUTTONS,
   RELEASABLE_KEYS,
-  releaseMessages,
+  releaseInputMessages,
   serializeMessage,
   socketUrl,
   type ActionCapabilities,
   type ConnectionState,
   type HostState,
+  type PointerButton,
+  type ServerMessage,
   type TapPadMessage,
+  supportsPointerButton,
 } from './protocol';
 import { theme } from './theme';
 
@@ -144,12 +148,14 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<ActionCapabilities | null>(null);
   const [capabilityError, setCapabilityError] = useState<string | null>(null);
+  const [pointerButtonSupported, setPointerButtonSupported] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
   const mountedRef = useRef(true);
   const heldKeysRef = useRef(new Set<string>());
+  const heldButtonsRef = useRef(new Set<PointerButton>());
 
   const send = useCallback((message: TapPadMessage) => {
     const socket = socketRef.current;
@@ -159,13 +165,16 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
   }, []);
 
   const releaseAll = useCallback(() => {
-    for (const message of releaseMessages(heldKeysRef.current)) send(message);
+    for (const message of releaseInputMessages(heldButtonsRef.current, heldKeysRef.current)) send(message);
+    heldButtonsRef.current.clear();
     heldKeysRef.current.clear();
   }, [send]);
 
   const pressKey = useCallback((code: string) => {
-    if (heldKeysRef.current.has(code)) return;
-    if (send({ type: 'key', code, down: true })) heldKeysRef.current.add(code);
+    if (heldKeysRef.current.has(code)) return true;
+    if (!send({ type: 'key', code, down: true })) return false;
+    heldKeysRef.current.add(code);
+    return true;
   }, [send]);
 
   const releaseKey = useCallback((code: string) => {
@@ -174,10 +183,26 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
     heldKeysRef.current.delete(code);
   }, [send]);
 
+  const pressPointerButton = useCallback((button: PointerButton) => {
+    if (!pointerButtonSupported) return false;
+    if (heldButtonsRef.current.has(button)) return true;
+    if (!send({ type: 'pointerButton', button, down: true })) return false;
+    heldButtonsRef.current.add(button);
+    return true;
+  }, [pointerButtonSupported, send]);
+
+  const releasePointerButton = useCallback((button: PointerButton) => {
+    if (!heldButtonsRef.current.has(button)) return;
+    send({ type: 'pointerButton', button, down: false });
+    heldButtonsRef.current.delete(button);
+  }, [send]);
+
   const connectSocket = useCallback(() => {
     if (!mountedRef.current) return;
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    releaseAll();
     socketRef.current?.close();
+    setPointerButtonSupported(false);
     setConnectionState('connecting');
     setConnectionError(null);
 
@@ -185,13 +210,18 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
     socketRef.current = socket;
     socket.onmessage = (event) => {
       try {
-        const message = JSON.parse(String(event.data)) as { type?: string };
+        const message = JSON.parse(String(event.data)) as ServerMessage;
+        if (message.type === 'error') {
+          setNotice(message.message || 'The host rejected an input message.');
+          return;
+        }
         if (message.type !== 'ready') return;
         reconnectAttemptRef.current = 0;
         setConnectionState('connected');
         setConnectionError(null);
+        setPointerButtonSupported(supportsPointerButton(message));
         // Recover from an interrupted previous socket before accepting new input.
-        for (const messageToSend of releaseMessages(RELEASABLE_KEYS)) {
+        for (const messageToSend of releaseInputMessages(POINTER_BUTTONS, RELEASABLE_KEYS)) {
           socket.send(serializeMessage(messageToSend));
         }
       } catch {
@@ -206,13 +236,15 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
     };
     socket.onclose = () => {
       if (!mountedRef.current || socketRef.current !== socket) return;
+      heldButtonsRef.current.clear();
       heldKeysRef.current.clear();
+      setPointerButtonSupported(false);
       setConnectionState('disconnected');
       const delay = Math.min(1_000 * 2 ** reconnectAttemptRef.current, 8_000);
       reconnectAttemptRef.current += 1;
       reconnectTimerRef.current = setTimeout(connectSocket, delay);
     };
-  }, [host, port, token]);
+  }, [host, port, releaseAll, token]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -332,6 +364,9 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
             send={send}
             pressKey={pressKey}
             releaseKey={releaseKey}
+            pressPointerButton={pressPointerButton}
+            releasePointerButton={releasePointerButton}
+            windowDragSupported={pointerButtonSupported}
             connected={connectionState === 'connected'}
             setNotice={setNotice}
           />
@@ -354,13 +389,25 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
 
 type PadProps = {
   send: (message: TapPadMessage) => boolean;
-  pressKey: (code: string) => void;
+  pressKey: (code: string) => boolean;
   releaseKey: (code: string) => void;
+  pressPointerButton: (button: PointerButton) => boolean;
+  releasePointerButton: (button: PointerButton) => void;
+  windowDragSupported: boolean;
   connected: boolean;
   setNotice: (message: string | null) => void;
 };
 
-function PadPanel({ send, pressKey, releaseKey, connected, setNotice }: PadProps) {
+function PadPanel({
+  send,
+  pressKey,
+  releaseKey,
+  pressPointerButton,
+  releasePointerButton,
+  windowDragSupported,
+  connected,
+  setNotice,
+}: PadProps) {
   const [text, setText] = useState('');
   const [windowMode, setWindowMode] = useState(false);
   const gestureRef = useRef<GestureState | null>(null);
@@ -377,6 +424,12 @@ function PadPanel({ send, pressKey, releaseKey, connected, setNotice }: PadProps
     longPressTimerRef.current = null;
   }, []);
 
+  const endWindowMode = useCallback(() => {
+    releasePointerButton('left');
+    releaseKey('MetaLeft');
+    setWindowMode(false);
+  }, [releaseKey, releasePointerButton]);
+
   const endGesture = useCallback((canceled: boolean) => {
     clearLongPress();
     wheelSender.cancel();
@@ -385,8 +438,7 @@ function PadPanel({ send, pressKey, releaseKey, connected, setNotice }: PadProps
     if (!gesture) return;
 
     if (gesture.mode === 'window') {
-      releaseKey('MetaLeft');
-      setWindowMode(false);
+      endWindowMode();
       return;
     }
     if (canceled || !shouldTap(gesture, Date.now())) return;
@@ -405,14 +457,14 @@ function PadPanel({ send, pressKey, releaseKey, connected, setNotice }: PadProps
       pendingTapTimerRef.current = null;
       lastTapAtRef.current = 0;
     }, 320);
-  }, [clearLongPress, releaseKey, send, wheelSender]);
+  }, [clearLongPress, endWindowMode, send, wheelSender]);
 
   useEffect(() => () => {
     clearLongPress();
     wheelSender.cancel();
     if (pendingTapTimerRef.current) clearTimeout(pendingTapTimerRef.current);
-    if (gestureRef.current?.mode === 'window') releaseKey('MetaLeft');
-  }, [clearLongPress, releaseKey, wheelSender]);
+    if (gestureRef.current?.mode === 'window') endWindowMode();
+  }, [clearLongPress, endWindowMode, wheelSender]);
 
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -427,11 +479,16 @@ function PadPanel({ send, pressKey, releaseKey, connected, setNotice }: PadProps
       longPressTimerRef.current = setTimeout(() => {
         const gesture = gestureRef.current;
         if (!gesture || !shouldBeginWindowMode(gesture)) return;
+        if (!windowDragSupported) {
+          setNotice('Window drag requires a TapPad Host with pointer hold support.');
+          return;
+        }
+        if (!pressKey('MetaLeft')) return;
+        if (!pressPointerButton('left')) {
+          releaseKey('MetaLeft');
+          return;
+        }
         gesture.mode = 'window';
-        pressKey('MetaLeft');
-        // The stable protocol exposes an atomic click but no separate mouse-down.
-        // Keep this best-effort sequence isolated and always pair the modifier release.
-        send({ type: 'click', button: 'left', clickCount: 1 });
         setWindowMode(true);
       }, LONG_PRESS_DELAY_MS);
     },
@@ -444,8 +501,7 @@ function PadPanel({ send, pressKey, releaseKey, connected, setNotice }: PadProps
       if (points.length >= 2) {
         clearLongPress();
         if (gesture.mode === 'window') {
-          releaseKey('MetaLeft');
-          setWindowMode(false);
+          endWindowMode();
         }
         const next = centroid(points.slice(0, 2));
         if (gesture.mode !== 'scroll') {
@@ -477,7 +533,18 @@ function PadPanel({ send, pressKey, releaseKey, connected, setNotice }: PadProps
     },
     onPanResponderRelease: () => endGesture(false),
     onPanResponderTerminate: () => endGesture(true),
-  }), [clearLongPress, endGesture, pressKey, releaseKey, send, wheelSender]);
+  }), [
+    clearLongPress,
+    endGesture,
+    endWindowMode,
+    pressKey,
+    pressPointerButton,
+    releaseKey,
+    send,
+    setNotice,
+    wheelSender,
+    windowDragSupported,
+  ]);
 
   const sendText = useCallback(() => {
     if (!text.trim()) return;

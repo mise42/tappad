@@ -7,6 +7,7 @@ pub enum BackendEffect {
     Move { dx: i32, dy: i32 },
     Wheel { dy: i32 },
     Click { button: String, click_count: u8 },
+    PointerButton { button: String, down: bool },
     Key { code: String, down: bool },
     Text { value: String },
     Paste { value: String },
@@ -54,6 +55,9 @@ impl ProtocolRouter {
                 button,
                 click_count,
             },
+            ClientMessage::PointerButton { button, down } => {
+                BackendEffect::PointerButton { button, down }
+            }
             ClientMessage::Key { code, down } => BackendEffect::Key { code, down },
             ClientMessage::Text { value } => BackendEffect::Text { value },
             ClientMessage::Paste { value } => BackendEffect::Paste { value },
@@ -168,6 +172,25 @@ mod tests {
             Some(BackendEffect::Click {
                 button: "left".to_string(),
                 click_count: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn routes_pointer_button_state_without_changing_click_semantics() {
+        let mut router = ProtocolRouter::new();
+
+        assert_eq!(
+            router.route(
+                "client-a",
+                ClientMessage::PointerButton {
+                    button: "left".to_string(),
+                    down: true,
+                },
+            ),
+            Some(BackendEffect::PointerButton {
+                button: "left".to_string(),
+                down: true,
             })
         );
     }

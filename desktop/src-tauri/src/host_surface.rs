@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 use crate::{
     actions::{CapabilityStatus, action_capabilities, capability},
     diagnostics::{DiagnosticsSummary, diagnostics_summary},
+    input::{InputCapabilities, input_capabilities},
+    protocol::PROTOCOL_VERSION,
     settings::RuntimeSettings,
 };
 
@@ -67,7 +69,15 @@ pub struct HostSurfaceState {
     pub readiness: Vec<ReadinessGroup>,
     pub settings: SettingsSummary,
     pub actions: BTreeMap<String, CapabilityStatus>,
+    pub protocol: ProtocolState,
     pub diagnostics: DiagnosticsSummary,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProtocolState {
+    pub version: u16,
+    #[serde(rename = "inputCapabilities")]
+    pub input_capabilities: InputCapabilities,
 }
 
 pub fn host_surface_state(
@@ -109,6 +119,10 @@ pub fn host_surface_state(
             ),
         },
         actions: action_capabilities(),
+        protocol: ProtocolState {
+            version: PROTOCOL_VERSION,
+            input_capabilities: input_capabilities(),
+        },
         diagnostics,
     }
 }
@@ -299,6 +313,14 @@ mod tests {
                 .starts_with("data:image/svg+xml;base64,")
         );
         assert!(state.server_status.token_enabled);
+        assert_eq!(state.protocol.version, PROTOCOL_VERSION);
+        assert!(
+            state
+                .protocol
+                .input_capabilities
+                .pointer_button
+                .is_supported()
+        );
     }
 
     #[test]

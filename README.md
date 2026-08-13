@@ -49,6 +49,14 @@ The local backend serves:
 - Sanitized host state: `http://<host>:<port>/api/host-state`
 - Token-gated WebSocket: `ws://<host>:<port>/ws?token=<pairing-token>`
 
+The WebSocket protocol is additive and versioned through the Host's `ready`
+message and `/api/host-state`. Protocol v2 advertises target-backend input
+capabilities and adds `pointerButton` down/up messages for held pointer input.
+Clients must gate new input messages on the advertised capability; older Hosts
+continue to accept the existing move, wheel, atomic click, key, text, paste, and
+desktop action messages. Rejected messages and unknown desktop action IDs return
+an explicit WebSocket `error` response.
+
 ## Controls
 
 - One finger move: pointer movement

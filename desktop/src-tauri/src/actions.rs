@@ -78,7 +78,7 @@ impl DesktopActions {
         self.adapter.execute(input, action).await
     }
 
-    fn validate(&self, action: &str) -> Result<(), ActionError> {
+    pub(crate) fn validate(&self, action: &str) -> Result<(), ActionError> {
         if !ACTION_IDS.contains(&action) {
             return Err(ActionError::unknown(action));
         }
