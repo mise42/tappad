@@ -6,6 +6,8 @@ use tokio::sync::Mutex;
 use crate::input::InputDevice;
 
 #[cfg(target_os = "linux")]
+mod codex;
+#[cfg(target_os = "linux")]
 mod linux;
 #[cfg(any(target_os = "macos", test))]
 mod macos;
@@ -17,6 +19,10 @@ pub struct CapabilityStatus {
     pub state: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<&'static str>,
+    #[serde(rename = "reasonCode", skip_serializing_if = "Option::is_none")]
+    pub reason_code: Option<&'static str>,
 }
 
 impl CapabilityStatus {
@@ -24,6 +30,25 @@ impl CapabilityStatus {
         matches!(self.state, "supported" | "deferred")
     }
 }
+
+pub const UI_ACTION_IDS: &[&str] = &[
+    "screenrecord.screen",
+    "screenrecord.window",
+    "screenrecord.screen.audio",
+    "screenrecord.screen.webcam",
+    "screenrecord.stop",
+    "open_recordings_folder",
+    "screenshot",
+    "close_window",
+    "app_launcher",
+    "lock_screen",
+    "media.prev",
+    "media.play_pause",
+    "media.next",
+    "media.volume_down",
+    "media.mute",
+    "media.volume_up",
+];
 
 pub const ACTION_IDS: &[&str] = &[
     "screenrecord.screen",
@@ -42,6 +67,9 @@ pub const ACTION_IDS: &[&str] = &[
     "media.volume_down",
     "media.mute",
     "media.volume_up",
+    "codex.voice.start",
+    "codex.voice.end",
+    "codex.voice.toggle_microphone",
 ];
 
 pub const OMARCHY_ACTION_IDS: &[&str] = &[
@@ -77,6 +105,11 @@ impl DesktopActions {
     }
 
     pub fn capabilities(&self) -> BTreeMap<String, CapabilityStatus> {
+        debug_assert!(
+            UI_ACTION_IDS
+                .iter()
+                .all(|action| ACTION_IDS.contains(action))
+        );
         ACTION_IDS
             .iter()
             .chain(self.adapter.additional_action_ids())
@@ -145,6 +178,22 @@ pub fn capability(state: &'static str, note: Option<&str>) -> CapabilityStatus {
     CapabilityStatus {
         state,
         note: note.map(ToString::to_string),
+        scope: None,
+        reason_code: None,
+    }
+}
+
+pub fn scoped_capability(
+    state: &'static str,
+    note: impl Into<String>,
+    scope: &'static str,
+    reason_code: Option<&'static str>,
+) -> CapabilityStatus {
+    CapabilityStatus {
+        state,
+        note: Some(note.into()),
+        scope: Some(scope),
+        reason_code,
     }
 }
 
@@ -308,7 +357,7 @@ mod tests {
     }
 
     #[test]
-    fn every_mobile_action_has_a_platform_capability() {
+    fn every_registered_action_has_a_platform_capability() {
         let capabilities = action_capabilities();
 
         for action in ACTION_IDS {
@@ -336,6 +385,46 @@ mod tests {
                 "missing supported capability for {action}"
             );
         }
+    }
+
+    #[test]
+    fn current_ui_actions_remain_a_compatible_registry_subset() {
+        for action in UI_ACTION_IDS {
+            assert!(
+                ACTION_IDS.contains(action),
+                "UI action {action} is unregistered"
+            );
+        }
+        assert_eq!(
+            ACTION_IDS
+                .iter()
+                .filter(|action| action.starts_with("codex.voice."))
+                .count(),
+            3
+        );
+    }
+
+    #[test]
+    fn capability_metadata_is_additive_for_existing_clients() {
+        let legacy = serde_json::to_value(capability("supported", None)).expect("serialize");
+        assert_eq!(legacy, serde_json::json!({ "state": "supported" }));
+
+        let scoped = serde_json::to_value(scoped_capability(
+            "unavailable",
+            "app-only",
+            "app",
+            Some("codex_app_scope_only"),
+        ))
+        .expect("serialize");
+        assert_eq!(
+            scoped,
+            serde_json::json!({
+                "state": "unavailable",
+                "note": "app-only",
+                "scope": "app",
+                "reasonCode": "codex_app_scope_only"
+            })
+        );
     }
 
     #[test]

@@ -10,14 +10,18 @@ const text = Object.fromEntries(
 );
 
 const frontendActions = uniqueMatches(text.frontend, /data-cmd="([^"]+)"/g);
+const uiActions = rustConstArrayActions(text.desktopActions, "UI_ACTION_IDS");
 const desktopActions = rustConstArrayActions(text.desktopActions, "ACTION_IDS");
 
 assertNoRawShellDesktopAction(frontendActions, "frontend");
 assertNoRawShellDesktopAction(desktopActions, "Desktop host actions");
 
-assertSameSet(frontendActions, desktopActions, "frontend data-cmd", "Desktop host actions");
+assertSameSet(frontendActions, uiActions, "frontend data-cmd", "Desktop host UI actions");
+assertSubset(uiActions, desktopActions, "Desktop host UI actions", "Desktop host actions");
 
-console.log(`Desktop Action check passed for ${frontendActions.length} frontend actions.`);
+console.log(
+  `Desktop Action check passed for ${frontendActions.length} frontend actions and ${desktopActions.length} host actions.`,
+);
 
 function uniqueMatches(source, pattern) {
   return [...new Set([...source.matchAll(pattern)].map((match) => match[1]))].sort();
@@ -46,6 +50,13 @@ function assertSameSet(left, right, leftLabel, rightLabel) {
       missingLeft.length ? `${leftLabel} missing ${rightLabel}: ${missingLeft.join(", ")}` : "",
     ].filter(Boolean);
     fail(details.join("\n"));
+  }
+}
+
+function assertSubset(subset, superset, subsetLabel, supersetLabel) {
+  const missing = difference(subset, superset);
+  if (missing.length > 0) {
+    fail(`${supersetLabel} missing ${subsetLabel}: ${missing.join(", ")}`);
   }
 }
 

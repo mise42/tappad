@@ -4,6 +4,7 @@ use tokio::sync::Mutex;
 
 use crate::input::InputDevice;
 
+use super::codex;
 use super::{
     ActionError, ActionFuture, CapabilityStatus, DesktopActionAdapter, OMARCHY_ACTION_IDS,
     capability, run_shell_command,
@@ -21,6 +22,9 @@ impl DesktopActionAdapter for LinuxActionAdapter {
     }
 
     fn capability(&self, action: &str) -> CapabilityStatus {
+        if let Some(capability) = codex::capability(action) {
+            return capability;
+        }
         match action {
             "screenrecord.screen.webcam" => capability(
                 "deferred",
@@ -32,8 +36,11 @@ impl DesktopActionAdapter for LinuxActionAdapter {
         }
     }
 
-    fn execute<'a>(&'a self, _input: Arc<Mutex<InputDevice>>, action: &'a str) -> ActionFuture<'a> {
+    fn execute<'a>(&'a self, input: Arc<Mutex<InputDevice>>, action: &'a str) -> ActionFuture<'a> {
         Box::pin(async move {
+            if codex::is_codex_action(action) {
+                return codex::execute(input, action).await;
+            }
             let Some(command) = linux_command(action) else {
                 return Err(ActionError::unknown(action));
             };
@@ -96,7 +103,21 @@ mod tests {
     #[test]
     fn every_advertised_linux_action_has_an_implementation() {
         for action in ACTION_IDS.iter().chain(OMARCHY_ACTION_IDS) {
-            assert!(linux_command(action).is_some(), "missing {action}");
+            assert!(
+                linux_command(action).is_some() || codex::is_codex_action(action),
+                "missing {action}"
+            );
+        }
+    }
+
+    #[test]
+    fn app_scoped_codex_actions_are_unavailable() {
+        let adapter = LinuxActionAdapter;
+        for action in [codex::END_VOICE_ACTION, codex::TOGGLE_MICROPHONE_ACTION] {
+            let capability = adapter.capability(action);
+            assert_eq!(capability.state, "unavailable");
+            assert_eq!(capability.scope, Some("app"));
+            assert_eq!(capability.reason_code, Some("codex_app_scope_only"));
         }
     }
 
