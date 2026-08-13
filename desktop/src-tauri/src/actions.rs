@@ -23,6 +23,8 @@ pub struct CapabilityStatus {
     pub scope: Option<&'static str>,
     #[serde(rename = "reasonCode", skip_serializing_if = "Option::is_none")]
     pub reason_code: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub binding: Option<String>,
 }
 
 impl CapabilityStatus {
@@ -82,6 +84,10 @@ pub const OMARCHY_ACTION_IDS: &[&str] = &[
     "workspace.4",
     "workspace.5",
 ];
+
+pub fn reports_execution_result(action: &str) -> bool {
+    action == "codex.voice.start"
+}
 
 pub(crate) type ActionFuture<'a> =
     Pin<Box<dyn Future<Output = Result<(), ActionError>> + Send + 'a>>;
@@ -180,6 +186,7 @@ pub fn capability(state: &'static str, note: Option<&str>) -> CapabilityStatus {
         note: note.map(ToString::to_string),
         scope: None,
         reason_code: None,
+        binding: None,
     }
 }
 
@@ -194,6 +201,7 @@ pub fn scoped_capability(
         note: Some(note.into()),
         scope: Some(scope),
         reason_code,
+        binding: None,
     }
 }
 
@@ -423,6 +431,18 @@ mod tests {
                 "note": "app-only",
                 "scope": "app",
                 "reasonCode": "codex_app_scope_only"
+            })
+        );
+
+        let mut bound = scoped_capability("supported", "configured", "os-global", None);
+        bound.binding = Some("Command+F3".to_string());
+        assert_eq!(
+            serde_json::to_value(bound).expect("serialize bound capability"),
+            serde_json::json!({
+                "state": "supported",
+                "note": "configured",
+                "scope": "os-global",
+                "binding": "Command+F3"
             })
         );
     }

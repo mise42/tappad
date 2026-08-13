@@ -18,6 +18,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { createLatestFrameCoalescer } from './frameCoalescer';
 import {
+  CODEX_VOICE_START_ACTION,
+  codexVoiceControl,
+  codexVoiceResultNotice,
+  codexVoiceSentNotice,
+} from './codexVoice';
+import {
   beginGesture,
   centroid,
   LONG_PRESS_DELAY_MS,
@@ -156,6 +162,7 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
+  const capabilityRequestRef = useRef(0);
   const mountedRef = useRef(true);
   const heldKeysRef = useRef(new Set<string>());
   const heldButtonsRef = useRef(new Set<PointerButton>());
@@ -200,6 +207,22 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
     heldButtonsRef.current.delete(button);
   }, [send]);
 
+  const loadCapabilities = useCallback(async () => {
+    const request = capabilityRequestRef.current + 1;
+    capabilityRequestRef.current = request;
+    try {
+      const response = await fetch(hostStateUrl(host, port));
+      if (!response.ok) throw new Error(`Host returned HTTP ${response.status}.`);
+      const state = await response.json() as HostState;
+      if (!mountedRef.current || capabilityRequestRef.current !== request) return;
+      setCapabilities(state.actions ?? {});
+      setCapabilityError(null);
+    } catch (cause: unknown) {
+      if (!mountedRef.current || capabilityRequestRef.current !== request) return;
+      setCapabilityError(cause instanceof Error ? cause.message : 'Action availability could not be loaded.');
+    }
+  }, [host, port]);
+
   const connectSocket = useCallback(() => {
     if (!mountedRef.current) return;
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
@@ -218,11 +241,16 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
           setNotice(message.message || 'The host rejected an input message.');
           return;
         }
+        if (message.type === 'actionResult' && message.action === CODEX_VOICE_START_ACTION) {
+          setNotice(codexVoiceResultNotice(message.status, message.message));
+          return;
+        }
         if (message.type !== 'ready') return;
         reconnectAttemptRef.current = 0;
         setConnectionState('connected');
         setConnectionError(null);
         setPointerButtonSupported(supportsPointerButton(message));
+        void loadCapabilities();
         // Recover from an interrupted previous socket before accepting new input.
         for (const messageToSend of releaseInputMessages(POINTER_BUTTONS, RELEASABLE_KEYS)) {
           socket.send(serializeMessage(messageToSend));
@@ -247,7 +275,7 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
       reconnectAttemptRef.current += 1;
       reconnectTimerRef.current = setTimeout(connectSocket, delay);
     };
-  }, [host, port, releaseAll, token]);
+  }, [host, loadCapabilities, port, releaseAll, token]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -268,23 +296,7 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
     return () => subscription.remove();
   }, [releaseAll]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetch(hostStateUrl(host, port), { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`Host returned HTTP ${response.status}.`);
-        return response.json() as Promise<HostState>;
-      })
-      .then((state) => {
-        setCapabilities(state.actions ?? {});
-        setCapabilityError(null);
-      })
-      .catch((cause: unknown) => {
-        if (controller.signal.aborted) return;
-        setCapabilityError(cause instanceof Error ? cause.message : 'Action availability could not be loaded.');
-      });
-    return () => controller.abort();
-  }, [host, port]);
+  useEffect(() => { void loadCapabilities(); }, [loadCapabilities]);
 
   const switchPanel = useCallback((next: Panel) => {
     releaseAll();
@@ -292,7 +304,7 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
     setPanel(next);
   }, [releaseAll]);
 
-  const sendAction = useCallback((label: string, action: string) => {
+  const sendAction = useCallback((label: string, action: string, sentNotice?: string) => {
     const capability = capabilities?.[action];
     if (!capability) {
       setNotice(`${label} is unavailable because this host did not advertise the action.`);
@@ -306,7 +318,7 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
       setNotice(`${label} was not sent because TapPad is disconnected.`);
       return;
     }
-    setNotice(`${label} sent to ${hostName}.`);
+    setNotice(sentNotice ?? `${label} sent to ${hostName}.`);
   }, [capabilities, hostName, send]);
 
   return (
@@ -376,7 +388,12 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
         ) : null}
         {panel === 'keys' ? <KeysPanel pressKey={pressKey} releaseKey={releaseKey} releaseAll={releaseAll} /> : null}
         {panel === 'actions' ? (
-          <ActionsPanel capabilities={capabilities} capabilityError={capabilityError} sendAction={sendAction} />
+          <ActionsPanel
+            capabilities={capabilities}
+            capabilityError={capabilityError}
+            hostName={hostName}
+            sendAction={sendAction}
+          />
         ) : null}
         {panel === 'media' ? <MediaPanel sendAction={sendAction} /> : null}
       </View>
@@ -688,12 +705,14 @@ function KeysPanel({ pressKey, releaseKey, releaseAll }: {
   );
 }
 
-function ActionsPanel({ capabilities, capabilityError, sendAction }: {
+function ActionsPanel({ capabilities, capabilityError, hostName, sendAction }: {
   capabilities: ActionCapabilities | null;
   capabilityError: string | null;
-  sendAction: (label: string, action: string) => void;
+  hostName: string;
+  sendAction: (label: string, action: string, sentNotice?: string) => void;
 }) {
   const workspaceActions = supportedWorkspaceActions(capabilities);
+  const codexVoice = codexVoiceControl(capabilities);
 
   return (
     <ScrollView contentContainerStyle={styles.scrollPanel} showsVerticalScrollIndicator={false}>
@@ -720,6 +739,64 @@ function ActionsPanel({ capabilities, capabilityError, sendAction }: {
               ))}
             </View>
           </View>
+        </View>
+      ) : null}
+      {codexVoice ? (
+        <View style={styles.actionGroup}>
+          <Text style={styles.groupTitle}>Codex</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Send Codex configured voice hotkey"
+            accessibilityHint={codexVoice.start.detail}
+            accessibilityState={{ disabled: !codexVoice.start.enabled }}
+            disabled={!codexVoice.start.enabled}
+            onPress={() => sendAction(
+              'Codex voice hotkey',
+              CODEX_VOICE_START_ACTION,
+              codexVoiceSentNotice(hostName),
+            )}
+            style={({ pressed }) => [
+              styles.codexVoiceRow,
+              !codexVoice.start.enabled && styles.codexVoiceRowUnavailable,
+              pressed && styles.actionButtonPressed,
+            ]}
+          >
+            <MaterialCommunityIcons
+              name="microphone-outline"
+              color={codexVoice.start.enabled ? theme.color.textStrong : theme.color.warning}
+              size={20}
+            />
+            <View style={styles.codexVoiceCopy}>
+              <Text style={styles.codexVoiceTitle}>Send voice hotkey</Text>
+              <Text
+                style={styles.codexVoiceDetail}
+                numberOfLines={2}
+              >
+                {codexVoice.start.detail}
+              </Text>
+            </View>
+            <Text style={[
+              styles.codexVoiceState,
+              !codexVoice.start.enabled && styles.codexVoiceStateUnavailable,
+            ]}>
+              {codexVoice.start.enabled ? 'Send' : 'Unavailable'}
+            </Text>
+          </Pressable>
+          {codexVoice.appOnly.length > 0 ? (
+            <View style={styles.codexAppOnlyList}>
+              {codexVoice.appOnly.map((row) => (
+                <View
+                  key={row.action}
+                  accessible
+                  accessibilityLabel={`${row.label}. ${row.detail}`}
+                  style={styles.codexAppOnlyRow}
+                >
+                  <Text style={styles.codexAppOnlyLabel}>{row.label}</Text>
+                  <Text style={styles.codexAppOnlyDetail}>{row.detail}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>
       ) : null}
       {ACTION_GROUPS.map((group) => (
@@ -853,6 +930,17 @@ const styles = StyleSheet.create({
   actionButtonUnavailable: { backgroundColor: theme.color.warningSurface, borderColor: theme.color.warningBorder },
   actionButtonText: { color: theme.color.textStrong, fontSize: 13, fontWeight: '700' },
   actionStateUnavailable: { color: theme.color.warning, fontSize: 10, fontWeight: '700', marginTop: 4 },
+  codexVoiceRow: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 7, paddingHorizontal: 8, paddingVertical: 7, backgroundColor: theme.color.surface, borderTopWidth: 1, borderBottomWidth: 1, borderColor: theme.color.border },
+  codexVoiceRowUnavailable: { backgroundColor: theme.color.warningSurface, borderColor: theme.color.warningBorder },
+  codexVoiceCopy: { flex: 1 },
+  codexVoiceTitle: { color: theme.color.textStrong, fontSize: 13, fontWeight: '700' },
+  codexVoiceDetail: { color: theme.color.textSubtle, fontSize: 10, lineHeight: 14, marginTop: 2 },
+  codexVoiceState: { color: theme.color.online, fontSize: 10, fontWeight: '800' },
+  codexVoiceStateUnavailable: { color: theme.color.warning },
+  codexAppOnlyList: { marginTop: 4 },
+  codexAppOnlyRow: { minHeight: 25, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8 },
+  codexAppOnlyLabel: { color: theme.color.textMuted, fontSize: 11, fontWeight: '600' },
+  codexAppOnlyDetail: { color: theme.color.textSubtle, fontSize: 10 },
   workspaceControls: { marginTop: 8 },
   workspaceNumberRow: { flexDirection: 'row', gap: 8 },
   workspaceNumberButton: { flex: 1, minHeight: 48, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },

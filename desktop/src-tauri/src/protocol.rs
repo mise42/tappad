@@ -51,6 +51,12 @@ pub enum ServerMessage {
     },
     #[serde(rename = "error")]
     Error { code: &'static str, message: String },
+    #[serde(rename = "actionResult")]
+    ActionResult {
+        action: String,
+        status: &'static str,
+        message: String,
+    },
 }
 
 impl ServerMessage {
@@ -69,6 +75,18 @@ impl ServerMessage {
     pub fn error(code: &'static str, message: impl Into<String>) -> Self {
         Self::Error {
             code,
+            message: message.into(),
+        }
+    }
+
+    pub fn action_result(
+        action: impl Into<String>,
+        status: &'static str,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::ActionResult {
+            action: action.into(),
+            status,
             message: message.into(),
         }
     }
@@ -100,5 +118,25 @@ mod tests {
         let error = serde_json::from_str::<ClientMessage>(r#"{"type":"pointerMystery"}"#)
             .expect_err("unknown message must fail");
         assert!(error.to_string().contains("unknown variant"));
+    }
+
+    #[test]
+    fn action_result_is_additive_and_names_the_completed_action() {
+        let value = serde_json::to_value(ServerMessage::action_result(
+            "codex.voice.start",
+            "sent",
+            "Configured hotkey dispatched.",
+        ))
+        .expect("action result JSON");
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "type": "actionResult",
+                "action": "codex.voice.start",
+                "status": "sent",
+                "message": "Configured hotkey dispatched."
+            })
+        );
     }
 }

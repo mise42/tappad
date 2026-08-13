@@ -13,6 +13,11 @@ The Linux adapter reads the current Codex keybinding instead of assuming a key
 chord. A successful `codex.voice.start` action means TapPad dispatched that
 configured chord. It does not prove that Codex started a voice session because
 Codex does not currently expose a session-state acknowledgement to TapPad.
+The Host exposes the resolved chord as additive `binding` metadata so the native
+mobile UI can display what will be sent without hardcoding a key.
+For this action the Host sends an `actionResult` only after input dispatch
+returns. The mobile surface shows “hotkey sent” only for that acknowledgement;
+a transport send alone is shown as pending, and a dispatch error is surfaced.
 
 `codex.voice.end` and `codex.voice.toggle_microphone` remain visible in the Host
 capability manifest with `state: unavailable`, `scope: app`, and
@@ -35,3 +40,12 @@ explain the boundary without parsing prose:
 
 No action accepts a raw shell command from a client. Execution remains inside
 the Command Registry and platform adapter boundary.
+
+The native Actions panel renders a compact Codex row only when the Host
+advertises at least one Codex voice capability. The start control is enabled
+only for `state: supported` with `scope: os-global`; app-only end and microphone
+actions are explanatory rows and are never sent.
+Platforms that advertise only the unverified `unknown` scope keep the existing
+Actions UI and omit this Linux-specific control group.
+The mobile surface refreshes the Host manifest when its WebSocket becomes ready,
+so reconnecting can pick up a newly started Codex process or a changed binding.

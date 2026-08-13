@@ -10,11 +10,14 @@ export type TapPadMessage =
 
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
 
-export type CapabilityState = 'supported' | 'downgraded' | 'deferred' | 'hidden';
+export type CapabilityState = 'supported' | 'downgraded' | 'deferred' | 'hidden' | 'unavailable';
 
 export type ActionCapability = {
   state: CapabilityState;
   note?: string;
+  scope?: 'os-global' | 'app' | 'unknown' | string;
+  reasonCode?: string;
+  binding?: string;
 };
 
 export type ActionCapabilities = Record<string, ActionCapability>;
@@ -49,6 +52,8 @@ export type ServerMessage = {
   inputCapabilities?: InputCapabilities;
   code?: string;
   message?: string;
+  action?: string;
+  status?: string;
 };
 
 export const POINTER_BUTTONS = ['left', 'right', 'middle'] as const;

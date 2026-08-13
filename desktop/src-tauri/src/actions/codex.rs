@@ -124,15 +124,19 @@ fn start_voice_capability() -> CapabilityStatus {
 
 fn start_voice_capability_for(paths: &ProbePaths) -> CapabilityStatus {
     match probe_start_binding(paths) {
-        Ok(binding) => scoped_capability(
-            "supported",
-            format!(
-                "Dispatches Codex's configured OS-global Voice Chat hotkey ({}). TapPad can verify hotkey dispatch, not that a voice session started.",
-                binding.accelerator
-            ),
-            GLOBAL_SCOPE,
-            None,
-        ),
+        Ok(binding) => {
+            let mut capability = scoped_capability(
+                "supported",
+                format!(
+                    "Dispatches Codex's configured OS-global Voice Chat hotkey ({}). TapPad can verify hotkey dispatch, not that a voice session started.",
+                    binding.accelerator
+                ),
+                GLOBAL_SCOPE,
+                None,
+            );
+            capability.binding = Some(binding.accelerator);
+            capability
+        }
         Err(error) => unavailable_start(error),
     }
 }
@@ -421,6 +425,7 @@ mod tests {
         assert_eq!(capability.state, "supported");
         assert_eq!(capability.scope, Some(GLOBAL_SCOPE));
         assert_eq!(capability.reason_code, None);
+        assert_eq!(capability.binding.as_deref(), Some("Command+F2"));
         assert!(capability.note.expect("note").contains("Command+F2"));
     }
 
@@ -510,11 +515,33 @@ mod tests {
 
     #[test]
     fn accelerator_parser_rejects_ambiguous_or_bare_modifier_bindings() {
-        for accelerator in ["Command", "Command+F2+F3", "F2+Command", "Command++F2"] {
+        for accelerator in [
+            "Command",
+            "Command+Command+F2",
+            "Command+F2+F3",
+            "F2+Command",
+            "Command++F2",
+        ] {
             assert!(
                 parse_accelerator(accelerator).is_err(),
                 "{accelerator} should be rejected"
             );
         }
+    }
+
+    #[test]
+    fn accelerator_parser_uses_the_configured_non_default_chord() {
+        assert_eq!(
+            parse_accelerator("Ctrl + Shift + k"),
+            Ok(vec![
+                "ControlLeft".to_string(),
+                "ShiftLeft".to_string(),
+                "KeyK".to_string(),
+            ])
+        );
+        assert_eq!(
+            parse_accelerator("CommandOrControl+PageDown"),
+            Ok(vec!["ControlLeft".to_string(), "PageDown".to_string()])
+        );
     }
 }

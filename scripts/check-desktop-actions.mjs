@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 const files = {
   frontend: "mobile/index.html",
   desktopActions: "desktop/src-tauri/src/actions.rs",
+  nativeCodexVoice: "mobile-app/src/codexVoice.ts",
 };
 
 const text = Object.fromEntries(
@@ -12,15 +13,20 @@ const text = Object.fromEntries(
 const frontendActions = uniqueMatches(text.frontend, /data-cmd="([^"]+)"/g);
 const uiActions = rustConstArrayActions(text.desktopActions, "UI_ACTION_IDS");
 const desktopActions = rustConstArrayActions(text.desktopActions, "ACTION_IDS");
+const nativeCodexActions = uniqueMatches(text.nativeCodexVoice, /'(codex\.voice\.[^']+)'/g);
+const desktopCodexActions = desktopActions.filter((action) => action.startsWith("codex.voice."));
 
 assertNoRawShellDesktopAction(frontendActions, "frontend");
 assertNoRawShellDesktopAction(desktopActions, "Desktop host actions");
+assertNoRawShellDesktopAction(nativeCodexActions, "Native Codex actions");
 
 assertSameSet(frontendActions, uiActions, "frontend data-cmd", "Desktop host UI actions");
 assertSubset(uiActions, desktopActions, "Desktop host UI actions", "Desktop host actions");
+assertSubset(nativeCodexActions, desktopActions, "Native Codex actions", "Desktop host actions");
+assertSameSet(nativeCodexActions, desktopCodexActions, "Native Codex actions", "Desktop Codex actions");
 
 console.log(
-  `Desktop Action check passed for ${frontendActions.length} frontend actions and ${desktopActions.length} host actions.`,
+  `Desktop Action check passed for ${frontendActions.length} frontend actions, ${nativeCodexActions.length} native Codex actions, and ${desktopActions.length} host actions.`,
 );
 
 function uniqueMatches(source, pattern) {

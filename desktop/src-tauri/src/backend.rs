@@ -356,6 +356,26 @@ async fn apply_backend_effect(
                 };
                 return Some(ServerMessage::error(code, error.to_string()));
             }
+            if crate::actions::reports_execution_result(&action) {
+                record_action_attempt(&action);
+                return Some(
+                    match state.actions.run(state.input.clone(), &action).await {
+                        Ok(()) => {
+                            record_action_success(&action);
+                            ServerMessage::action_result(
+                                action,
+                                "sent",
+                                "The Host dispatched Codex's configured voice hotkey. Voice session status is not confirmed.",
+                            )
+                        }
+                        Err(error) => {
+                            record_action_failure(&action, &error.to_string());
+                            warn!("cmd failed for {client_id} ({action}): {error}");
+                            ServerMessage::action_result(action, "failed", error.to_string())
+                        }
+                    },
+                );
+            }
             let state = Arc::clone(&state);
             let client_id = client_id.to_string();
             tokio::spawn(async move {
