@@ -34,8 +34,8 @@ system-integration limitation requires it.
 
 ```bash
 cd ~/Work/personal/tappad/desktop
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 The Tauri app owns the backend lifecycle, pairing token, local settings,

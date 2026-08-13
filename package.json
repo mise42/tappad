@@ -2,10 +2,11 @@
   "name": "tappad",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.21.0",
   "scripts": {
     "check:desktop-actions": "node scripts/check-desktop-actions.mjs",
     "check:download-manifest": "node scripts/check-download-manifest.mjs",
     "check:landing": "node scripts/check-landing-download-links.mjs",
-    "test": "npm run check:desktop-actions && npm run check:download-manifest && npm run check:landing"
+    "test": "pnpm run check:desktop-actions && pnpm run check:download-manifest && pnpm run check:landing"
   }
 }

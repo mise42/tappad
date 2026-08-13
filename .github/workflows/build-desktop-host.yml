@@ -50,12 +50,15 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -66,11 +69,10 @@ jobs:
           workspaces: desktop/src-tauri -> target
 
       - name: Check shared scripts
-        run: npm test
+        run: pnpm test
 
       - name: Install desktop tooling
-        working-directory: desktop
-        run: npm ci --prefer-offline --no-audit
+        run: pnpm install --frozen-lockfile --prefer-offline --filter tappad-desktop-host...
 
       - name: Test desktop backend
         run: cargo test --manifest-path desktop/src-tauri/Cargo.toml
@@ -97,18 +99,22 @@ jobs:
           workspaces: desktop/src-tauri -> target
           save-if: false
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install desktop tooling
-        run: npm ci --prefer-offline --no-audit
+        working-directory: .
+        run: pnpm install --frozen-lockfile --prefer-offline --filter tappad-desktop-host...
 
       - name: Build Windows installer
-        run: npm run build:locked
+        run: pnpm run build:locked
 
       - name: Upload Windows desktop artifacts
         uses: actions/upload-artifact@v7
@@ -152,18 +158,22 @@ jobs:
           workspaces: desktop/src-tauri -> target
           save-if: false
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install desktop tooling
-        run: npm ci --prefer-offline --no-audit
+        working-directory: .
+        run: pnpm install --frozen-lockfile --prefer-offline --filter tappad-desktop-host...
 
       - name: Build Linux packages
-        run: npm run build:locked
+        run: pnpm run build:locked
 
       - name: Upload Linux desktop artifacts
         uses: actions/upload-artifact@v7
@@ -198,18 +208,22 @@ jobs:
           workspaces: desktop/src-tauri -> target
           save-if: false
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install desktop tooling
-        run: npm ci --prefer-offline --no-audit
+        working-directory: .
+        run: pnpm install --frozen-lockfile --prefer-offline --filter tappad-desktop-host...
 
       - name: Build Tauri macOS desktop host
-        run: npm run build:locked
+        run: pnpm run build:locked
 
       - name: Upload Tauri macOS desktop artifacts
         uses: actions/upload-artifact@v7
@@ -234,6 +248,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
 
       - name: Download package artifacts
         uses: actions/download-artifact@v8
@@ -322,8 +339,8 @@ jobs:
 
           for file in release-files/*; do
             base_name="$(basename "$file")"
-            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/releases/$TAPPAD_RELEASE_TAG/$base_name" --file="$file" --remote
-            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/latest/$base_name" --file="$file" --remote
+            pnpm dlx wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/releases/$TAPPAD_RELEASE_TAG/$base_name" --file="$file" --remote
+            pnpm dlx wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/latest/$base_name" --file="$file" --remote
           done
 
   sync-existing-release-to-r2:
@@ -336,6 +353,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
 
       - name: Download GitHub release files
         env:
@@ -376,6 +396,6 @@ jobs:
 
           for file in release-files/*; do
             base_name="$(basename "$file")"
-            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/releases/$TAPPAD_RELEASE_TAG/$base_name" --file="$file" --remote
-            npx --yes wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/latest/$base_name" --file="$file" --remote
+            pnpm dlx wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/releases/$TAPPAD_RELEASE_TAG/$base_name" --file="$file" --remote
+            pnpm dlx wrangler@latest r2 object put "$TAPPAD_R2_BUCKET/latest/$base_name" --file="$file" --remote
           done
