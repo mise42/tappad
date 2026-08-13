@@ -1,5 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
   KeyboardAvoidingView,
@@ -14,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { createLatestFrameCoalescer } from './frameCoalescer';
 import {
   beginGesture,
   centroid,
@@ -34,6 +36,7 @@ import {
   type HostState,
   type TapPadMessage,
 } from './protocol';
+import { theme } from './theme';
 
 type Panel = 'pad' | 'keys' | 'actions' | 'media';
 
@@ -54,36 +57,28 @@ const TABS: { id: Panel; label: string }[] = [
   { id: 'media', label: 'Media' },
 ];
 
-const KEY_ROWS = [
-  [
-    ['Esc', 'Escape'],
-    ['Tab', 'Tab'],
-    ['Enter', 'Enter'],
-    ['⌫', 'Backspace'],
-    ['PrtSc', 'PrintScreen'],
-  ],
-  [
-    ['Super', 'MetaLeft'],
-    ['Ctrl', 'ControlLeft'],
-    ['Shift', 'ShiftLeft'],
-    ['Alt', 'AltLeft'],
-    ['Space', 'Space'],
-  ],
-  [
-    ['↑', 'ArrowUp'],
-    ['←', 'ArrowLeft'],
-    ['↓', 'ArrowDown'],
-    ['→', 'ArrowRight'],
-  ],
-  [
-    ['A', 'KeyA'], ['C', 'KeyC'], ['V', 'KeyV'], ['X', 'KeyX'], ['Z', 'KeyZ'],
-  ],
-  [
-    ['B', 'KeyB'], ['S', 'KeyS'], ['T', 'KeyT'], ['W', 'KeyW'], ['F', 'KeyF'],
-  ],
-  [
-    ['1', 'Digit1'], ['2', 'Digit2'], ['3', 'Digit3'], ['4', 'Digit4'], ['5', 'Digit5'],
-  ],
+const KEY_GROUPS = [
+  {
+    title: 'Modifiers',
+    rows: [[
+      ['Super', 'MetaLeft'], ['Ctrl', 'ControlLeft'], ['Alt', 'AltLeft'], ['Shift', 'ShiftLeft'], ['Space', 'Space'],
+    ]],
+  },
+  {
+    title: 'Navigation',
+    rows: [
+      [['Esc', 'Escape'], ['Tab', 'Tab'], ['Enter', 'Enter'], ['⌫', 'Backspace'], ['PrtSc', 'PrintScreen']],
+      [['←', 'ArrowLeft'], ['↑', 'ArrowUp'], ['↓', 'ArrowDown'], ['→', 'ArrowRight']],
+    ],
+  },
+  {
+    title: 'Common keys',
+    rows: [
+      [['A', 'KeyA'], ['C', 'KeyC'], ['V', 'KeyV'], ['X', 'KeyX'], ['Z', 'KeyZ']],
+      [['B', 'KeyB'], ['S', 'KeyS'], ['T', 'KeyT'], ['W', 'KeyW'], ['F', 'KeyF']],
+      [['1', 'Digit1'], ['2', 'Digit2'], ['3', 'Digit3'], ['4', 'Digit4'], ['5', 'Digit5']],
+    ],
+  },
 ] as const;
 
 const ACTION_GROUPS = [
@@ -109,14 +104,26 @@ const ACTION_GROUPS = [
   },
 ] as const;
 
-const MEDIA_ACTIONS = [
-  ['⏮', 'Previous', 'media.prev'],
-  ['▶', 'Play / pause', 'media.play_pause'],
-  ['⏭', 'Next', 'media.next'],
-  ['−', 'Volume down', 'media.volume_down'],
-  ['⌁', 'Mute', 'media.mute'],
-  ['＋', 'Volume up', 'media.volume_up'],
-] as const;
+type MaterialIconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
+
+const MEDIA_GROUPS: { title: string; actions: { icon: MaterialIconName; label: string; action: string; primary?: boolean }[] }[] = [
+  {
+    title: 'Playback',
+    actions: [
+      { icon: 'skip-previous', label: 'Previous', action: 'media.prev' },
+      { icon: 'play-pause', label: 'Play / pause', action: 'media.play_pause', primary: true },
+      { icon: 'skip-next', label: 'Next', action: 'media.next' },
+    ],
+  },
+  {
+    title: 'Volume',
+    actions: [
+      { icon: 'volume-minus', label: 'Volume down', action: 'media.volume_down' },
+      { icon: 'volume-mute', label: 'Mute', action: 'media.mute' },
+      { icon: 'volume-plus', label: 'Volume up', action: 'media.volume_up' },
+    ],
+  },
+];
 
 function pointsFromTouches(touches: readonly TouchLike[]): Point[] {
   return Array.from(touches, (touch) => ({ x: touch.pageX, y: touch.pageY }));
@@ -269,25 +276,37 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <View style={styles.topBar}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back to hosts"
           onPress={() => { releaseAll(); onExit(); }}
-          style={styles.backButton}
+          style={({ pressed }) => [styles.iconButton, styles.backButton, pressed && styles.controlPressed]}
         >
-          <Text style={styles.backButtonText}>‹ Hosts</Text>
+          <MaterialCommunityIcons name="arrow-left" color={theme.color.textStrong} size={19} />
+          <Text style={styles.backButtonText}>Hosts</Text>
         </Pressable>
         <View style={styles.hostTitleWrap}>
           <Text style={styles.hostTitle} numberOfLines={1}>{hostName}</Text>
-          <View style={styles.statusRow}>
-            <View style={[styles.statusDot, connectionState === 'connected' && styles.statusDotReady]} />
-            <Text style={styles.statusLabel}>{statusText(connectionState)}</Text>
+          <View style={styles.statusRow} accessibilityLiveRegion="polite">
+            <View style={[
+              styles.statusDot,
+              connectionState === 'connected' && styles.statusDotReady,
+              connectionState === 'error' && styles.statusDotError,
+            ]} />
+            <Text style={[styles.statusLabel, connectionState !== 'connected' && styles.statusLabelAttention]}>
+              {statusText(connectionState)}
+            </Text>
           </View>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Reconnect" onPress={connectSocket} style={styles.reconnectButton}>
-          <Text style={styles.reconnectText}>↻</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Reconnect"
+          onPress={connectSocket}
+          style={({ pressed }) => [styles.iconButton, styles.reconnectButton, pressed && styles.controlPressed]}
+        >
+          <MaterialCommunityIcons name="refresh" color={theme.color.textStrong} size={21} />
         </Pressable>
       </View>
 
@@ -300,7 +319,7 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
             accessibilityRole="tab"
             accessibilityState={{ selected: panel === tab.id }}
             onPress={() => switchPanel(tab.id)}
-            style={[styles.tab, panel === tab.id && styles.tabActive]}
+            style={({ pressed }) => [styles.tab, panel === tab.id && styles.tabActive, pressed && styles.tabPressed]}
           >
             <Text style={[styles.tabText, panel === tab.id && styles.tabTextActive]}>{tab.label}</Text>
           </Pressable>
@@ -348,6 +367,10 @@ function PadPanel({ send, pressKey, releaseKey, connected, setNotice }: PadProps
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapAtRef = useRef(0);
+  const wheelSender = useMemo(() => createLatestFrameCoalescer<number>(
+    (dy) => send({ type: 'wheel', dy }),
+    { request: requestAnimationFrame, cancel: cancelAnimationFrame },
+  ), [send]);
 
   const clearLongPress = useCallback(() => {
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
@@ -356,6 +379,7 @@ function PadPanel({ send, pressKey, releaseKey, connected, setNotice }: PadProps
 
   const endGesture = useCallback((canceled: boolean) => {
     clearLongPress();
+    wheelSender.cancel();
     const gesture = gestureRef.current;
     gestureRef.current = null;
     if (!gesture) return;
@@ -381,13 +405,14 @@ function PadPanel({ send, pressKey, releaseKey, connected, setNotice }: PadProps
       pendingTapTimerRef.current = null;
       lastTapAtRef.current = 0;
     }, 320);
-  }, [clearLongPress, releaseKey, send]);
+  }, [clearLongPress, releaseKey, send, wheelSender]);
 
   useEffect(() => () => {
     clearLongPress();
+    wheelSender.cancel();
     if (pendingTapTimerRef.current) clearTimeout(pendingTapTimerRef.current);
     if (gestureRef.current?.mode === 'window') releaseKey('MetaLeft');
-  }, [clearLongPress, releaseKey]);
+  }, [clearLongPress, releaseKey, wheelSender]);
 
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -430,13 +455,14 @@ function PadPanel({ send, pressKey, releaseKey, connected, setNotice }: PadProps
         }
         const dy = next.y - gesture.last.y;
         gesture.last = next;
-        if (Math.abs(dy) > 0.5) send({ type: 'wheel', dy: -dy * 0.25 });
+        if (Math.abs(dy) > 0.5) wheelSender.push(-dy * 0.25);
         return;
       }
 
       const next = points[0];
       if (!next) return;
       if (gesture.mode === 'scroll') {
+        wheelSender.cancel();
         gesture.mode = 'pointer';
         gesture.last = next;
         return;
@@ -451,7 +477,7 @@ function PadPanel({ send, pressKey, releaseKey, connected, setNotice }: PadProps
     },
     onPanResponderRelease: () => endGesture(false),
     onPanResponderTerminate: () => endGesture(true),
-  }), [clearLongPress, endGesture, pressKey, releaseKey, send]);
+  }), [clearLongPress, endGesture, pressKey, releaseKey, send, wheelSender]);
 
   const sendText = useCallback(() => {
     if (!text.trim()) return;
@@ -470,10 +496,10 @@ function PadPanel({ send, pressKey, releaseKey, connected, setNotice }: PadProps
         accessibilityLabel="Touchpad. Move one finger for pointer, two fingers to scroll, long press to move a window."
         style={[styles.touchPad, !connected && styles.controlDisabled, windowMode && styles.touchPadWindowMode]}
       >
-        <View style={styles.padGlow} />
-        <Text style={styles.padTitle}>{windowMode ? 'WINDOW MODE' : 'TAPPAD'}</Text>
-        <Text style={styles.padHint}>{windowMode ? 'Keep holding and move' : 'Move · Tap · Two-finger scroll'}</Text>
-        <Text style={styles.padLongHint}>Long press: move window</Text>
+        <View style={styles.padGuide}>
+          <Text style={styles.padHint}>{windowMode ? 'Keep holding and move' : 'Move · Tap · Two-finger scroll'}</Text>
+          <Text style={styles.padLongHint}>{windowMode ? 'Release to exit' : 'Long press to move a window'}</Text>
+        </View>
       </View>
 
       <View style={styles.textRow}>
@@ -482,12 +508,17 @@ function PadPanel({ send, pressKey, releaseKey, connected, setNotice }: PadProps
           onChangeText={setText}
           multiline
           placeholder="Type or dictate text"
-          placeholderTextColor="#707887"
+          placeholderTextColor={theme.color.textSubtle}
           autoCapitalize="none"
           autoCorrect={false}
           style={styles.textInput}
         />
-        <Pressable onPress={sendText} style={styles.sendButton}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Send text"
+          onPress={sendText}
+          style={({ pressed }) => [styles.sendButton, pressed && styles.sendButtonPressed]}
+        >
           <Text style={styles.sendButtonText}>Send</Text>
         </Pressable>
       </View>
@@ -534,19 +565,32 @@ function KeysPanel({ pressKey, releaseKey, releaseAll }: {
 }) {
   return (
     <ScrollView contentContainerStyle={styles.scrollPanel} showsVerticalScrollIndicator={false}>
-      <Text style={styles.sectionEyebrow}>GENERIC KEYS</Text>
-      <Text style={styles.sectionTitle}>Hold or tap</Text>
-      <Text style={styles.sectionBody}>Buttons preserve the existing key-down and key-up protocol, so shortcuts can be pressed together.</Text>
-      <View style={styles.keyboard}>
-        {KEY_ROWS.map((row, rowIndex) => (
-          <View key={rowIndex} style={styles.keyRow}>
-            {row.map(([label, code]) => (
-              <KeyButton key={code} label={label} code={code} onDown={pressKey} onUp={releaseKey} />
-            ))}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Keyboard</Text>
+        <Text style={styles.sectionBody}>Hold a modifier, then tap another key.</Text>
+      </View>
+      <View style={styles.keyboardGroups}>
+        {KEY_GROUPS.map((group) => (
+          <View key={group.title} style={styles.keyGroup}>
+            <Text style={styles.groupTitle}>{group.title}</Text>
+            <View style={styles.keyboard}>
+              {group.rows.map((row, rowIndex) => (
+                <View key={rowIndex} style={styles.keyRow}>
+                  {row.map(([label, code]) => (
+                    <KeyButton key={code} label={label} code={code} onDown={pressKey} onUp={releaseKey} />
+                  ))}
+                </View>
+              ))}
+            </View>
           </View>
         ))}
       </View>
-      <Pressable onPress={releaseAll} style={styles.releaseButton}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Release all held keys"
+        onPress={releaseAll}
+        style={({ pressed }) => [styles.releaseButton, pressed && styles.releaseButtonPressed]}
+      >
         <Text style={styles.releaseButtonText}>Release all keys</Text>
       </Pressable>
     </ScrollView>
@@ -560,8 +604,10 @@ function ActionsPanel({ capabilities, capabilityError, sendAction }: {
 }) {
   return (
     <ScrollView contentContainerStyle={styles.scrollPanel} showsVerticalScrollIndicator={false}>
-      <Text style={styles.sectionEyebrow}>DESKTOP ACTIONS</Text>
-      <Text style={styles.sectionTitle}>Run on the host</Text>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Actions</Text>
+        {!capabilities && !capabilityError ? <Text style={styles.sectionBody}>Checking availability…</Text> : null}
+      </View>
       {capabilityError ? <Text style={styles.inlineWarning}>Availability check failed: {capabilityError}</Text> : null}
       {ACTION_GROUPS.map((group) => (
         <View key={group.title} style={styles.actionGroup}>
@@ -577,12 +623,14 @@ function ActionsPanel({ capabilities, capabilityError, sendAction }: {
                   accessibilityRole="button"
                   accessibilityState={{ disabled: unavailable }}
                   onPress={() => sendAction(label, action)}
-                  style={[styles.actionButton, unavailable && styles.actionButtonUnavailable]}
+                  style={({ pressed }) => [
+                    styles.actionButton,
+                    unavailable && styles.actionButtonUnavailable,
+                    pressed && styles.actionButtonPressed,
+                  ]}
                 >
                   <Text style={styles.actionButtonText}>{label}</Text>
-                  <Text style={[styles.actionState, unavailable && styles.actionStateUnavailable]}>
-                    {unavailable ? (capabilities ? 'Unavailable' : 'Checking…') : 'Ready'}
-                  </Text>
+                  {unavailable && capabilities ? <Text style={styles.actionStateUnavailable}>Unavailable</Text> : null}
                 </Pressable>
               );
             })}
@@ -596,89 +644,109 @@ function ActionsPanel({ capabilities, capabilityError, sendAction }: {
 function MediaPanel({ sendAction }: { sendAction: (label: string, action: string) => void }) {
   return (
     <View style={styles.mediaPanel}>
-      <Text style={styles.sectionEyebrow}>MEDIA</Text>
-      <Text style={styles.sectionTitle}>Playback & volume</Text>
-      <View style={styles.mediaGrid}>
-        {MEDIA_ACTIONS.map(([icon, label, action], index) => (
-          <Pressable
-            key={action}
-            accessibilityRole="button"
-            accessibilityLabel={label}
-            onPress={() => sendAction(label, action)}
-            style={[styles.mediaButton, index === 1 && styles.mediaButtonPrimary]}
-          >
-            <Text style={[styles.mediaIcon, index === 1 && styles.mediaIconPrimary]}>{icon}</Text>
-            <Text style={[styles.mediaLabel, index === 1 && styles.mediaLabelPrimary]}>{label}</Text>
-          </Pressable>
-        ))}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Media</Text>
+        <Text style={styles.sectionBody}>Playback and system volume.</Text>
       </View>
+      {MEDIA_GROUPS.map((group) => (
+        <View key={group.title} style={styles.mediaGroup}>
+          <Text style={styles.groupTitle}>{group.title}</Text>
+          <View style={styles.mediaRow}>
+            {group.actions.map(({ icon, label, action, primary }) => (
+              <Pressable
+                key={action}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                onPress={() => sendAction(label, action)}
+                style={({ pressed }) => [
+                  styles.mediaButton,
+                  primary && styles.mediaButtonPrimary,
+                  pressed && styles.mediaButtonPressed,
+                  primary && pressed && styles.mediaButtonPrimaryPressed,
+                ]}
+              >
+                <MaterialCommunityIcons name={icon} color={primary ? theme.color.onPrimary : theme.color.textStrong} size={27} />
+                <Text style={[styles.mediaLabel, primary && styles.mediaLabelPrimary]}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ))}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#0E1117' },
-  topBar: { minHeight: 58, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#232936' },
-  backButton: { minWidth: 72, minHeight: 42, justifyContent: 'center', paddingHorizontal: 8 },
-  backButtonText: { color: '#AFC0FF', fontSize: 15, fontWeight: '700' },
-  hostTitleWrap: { flex: 1, alignItems: 'center' },
-  hostTitle: { color: '#F7F8FA', fontSize: 15, fontWeight: '800', maxWidth: 220 },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
-  statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF9C66' },
-  statusDotReady: { backgroundColor: '#54D39B' },
-  statusLabel: { color: '#8F98A8', fontSize: 11, fontWeight: '600' },
-  reconnectButton: { minWidth: 72, minHeight: 42, alignItems: 'flex-end', justifyContent: 'center', paddingHorizontal: 10 },
-  reconnectText: { color: '#AFC0FF', fontSize: 24 },
-  bannerError: { color: '#FFC7C7', backgroundColor: '#4A2328', paddingHorizontal: 14, paddingVertical: 9, fontSize: 13 },
-  tabBar: { flexDirection: 'row', marginHorizontal: 12, marginTop: 10, padding: 4, backgroundColor: '#171B24', borderRadius: 14 },
-  tab: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
-  tabActive: { backgroundColor: '#EEF1FF' },
-  tabText: { color: '#818B9D', fontSize: 13, fontWeight: '800' },
-  tabTextActive: { color: '#263B9E' },
-  panelContainer: { flex: 1, marginTop: 10 },
-  notice: { marginHorizontal: 12, marginBottom: 8, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, backgroundColor: '#293248' },
-  noticeText: { color: '#DDE4FA', fontSize: 13, lineHeight: 18 },
-  padPanel: { flex: 1, paddingHorizontal: 12, paddingBottom: 8 },
-  touchPad: { flex: 1, minHeight: 230, borderRadius: 25, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: '#171D28', borderWidth: 1, borderColor: '#2B3445' },
-  touchPadWindowMode: { borderColor: '#7891FF', backgroundColor: '#1C2540' },
+  safeArea: { flex: 1, backgroundColor: theme.color.canvas },
+  topBar: { minHeight: 50, flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.space.sm, borderBottomWidth: 1, borderBottomColor: theme.color.border },
+  iconButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center' },
+  backButton: { width: 76, justifyContent: 'flex-start', gap: 4, paddingHorizontal: theme.space.xs },
+  backButtonText: { color: theme.color.textStrong, fontSize: 13, fontWeight: '700' },
+  hostTitleWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  hostTitle: { color: theme.color.text, fontSize: 14, fontWeight: '800', maxWidth: 220 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 },
+  statusDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: theme.color.pending },
+  statusDotReady: { backgroundColor: theme.color.online },
+  statusDotError: { backgroundColor: theme.color.danger },
+  statusLabel: { color: theme.color.textSubtle, fontSize: 10, fontWeight: '600' },
+  statusLabelAttention: { color: theme.color.textMuted },
+  reconnectButton: { width: 76, justifyContent: 'flex-end', paddingHorizontal: 8 },
+  controlPressed: { opacity: 0.58 },
+  bannerError: { color: theme.color.danger, backgroundColor: theme.color.dangerSurface, paddingHorizontal: 14, paddingVertical: 9, fontSize: 13 },
+  tabBar: { flexDirection: 'row', marginHorizontal: theme.space.md, marginTop: theme.space.xs, padding: theme.space.xxs, backgroundColor: theme.color.surfaceMuted, borderRadius: theme.radius.pad },
+  tab: { flex: 1, minHeight: 32, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control },
+  tabActive: { backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
+  tabPressed: { backgroundColor: theme.color.surfacePressed },
+  tabText: { color: theme.color.textSubtle, fontSize: 12, fontWeight: '700' },
+  tabTextActive: { color: theme.color.text },
+  panelContainer: { flex: 1, marginTop: 7 },
+  notice: { marginHorizontal: theme.space.md, marginBottom: theme.space.sm, paddingHorizontal: 13, paddingVertical: 9, borderRadius: theme.radius.panel, backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
+  noticeText: { color: theme.color.textMuted, fontSize: 12, lineHeight: 17 },
+  padPanel: { flex: 1, paddingHorizontal: theme.space.md, paddingBottom: theme.space.sm },
+  touchPad: { flex: 1, minHeight: 250, borderRadius: theme.radius.pad, overflow: 'hidden', alignItems: 'center', backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
+  touchPadWindowMode: { borderColor: theme.color.borderStrong, backgroundColor: theme.color.surfacePressed },
   controlDisabled: { opacity: 0.58 },
-  padGlow: { position: 'absolute', width: 210, height: 210, borderRadius: 105, backgroundColor: '#24366A', opacity: 0.35 },
-  padTitle: { color: '#F2F5FF', fontSize: 18, fontWeight: '900', letterSpacing: 3 },
-  padHint: { color: '#AEB7C8', fontSize: 14, fontWeight: '600', marginTop: 10 },
-  padLongHint: { color: '#6F7A8C', fontSize: 12, marginTop: 6 },
-  textRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  textInput: { flex: 1, minHeight: 52, maxHeight: 88, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#171B24', borderWidth: 1, borderColor: '#2A303D', color: '#F4F6FA', fontSize: 15 },
-  sendButton: { width: 70, minHeight: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#5975F7' },
-  sendButtonText: { color: '#FFFFFF', fontWeight: '900' },
-  quickKeys: { flexDirection: 'row', gap: 6, marginTop: 8 },
-  keyButton: { flex: 1, minWidth: 48, minHeight: 50, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#202631', borderWidth: 1, borderColor: '#303847' },
-  keyButtonCompact: { minWidth: 0, minHeight: 44 },
-  keyButtonPressed: { backgroundColor: '#E9EDFF', borderColor: '#A9B8FF' },
-  keyButtonText: { color: '#D9DEE8', fontSize: 13, fontWeight: '800' },
-  keyButtonTextPressed: { color: '#263B9E' },
-  scrollPanel: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 28 },
-  sectionEyebrow: { color: '#7891FF', fontSize: 11, fontWeight: '900', letterSpacing: 1.7 },
-  sectionTitle: { color: '#F5F7FB', fontSize: 25, fontWeight: '900', marginTop: 5 },
-  sectionBody: { color: '#8E98A9', fontSize: 13, lineHeight: 19, marginTop: 7 },
-  inlineWarning: { color: '#FFD09B', backgroundColor: '#3B2E20', borderRadius: 10, padding: 10, fontSize: 12, lineHeight: 17, marginTop: 10 },
-  keyboard: { gap: 7, marginTop: 18 },
-  keyRow: { flexDirection: 'row', gap: 7 },
-  releaseButton: { height: 48, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginTop: 16, backgroundColor: '#37252B', borderWidth: 1, borderColor: '#5A323A' },
-  releaseButtonText: { color: '#FFB8BF', fontWeight: '800' },
-  actionGroup: { marginTop: 22 },
-  groupTitle: { color: '#B9C0CD', fontSize: 14, fontWeight: '800', marginBottom: 9 },
-  actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
-  actionButton: { width: '48.5%', minHeight: 76, borderRadius: 15, padding: 13, justifyContent: 'space-between', backgroundColor: '#1B2230', borderWidth: 1, borderColor: '#2E394C' },
-  actionButtonUnavailable: { opacity: 0.62, backgroundColor: '#232127' },
-  actionButtonText: { color: '#EEF1F7', fontSize: 14, fontWeight: '800' },
-  actionState: { color: '#62D8A1', fontSize: 11, fontWeight: '800', marginTop: 8 },
-  actionStateUnavailable: { color: '#E5A06E' },
-  mediaPanel: { flex: 1, paddingHorizontal: 14, paddingTop: 8 },
-  mediaGrid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignContent: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 18 },
-  mediaButton: { width: '31%', aspectRatio: 0.95, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1B2230', borderWidth: 1, borderColor: '#303A4B' },
-  mediaButtonPrimary: { backgroundColor: '#EAF0FF', borderColor: '#EAF0FF' },
-  mediaIcon: { color: '#DDE3EE', fontSize: 27, fontWeight: '700' },
-  mediaIconPrimary: { color: '#304BB9' },
-  mediaLabel: { color: '#8994A6', fontSize: 10, fontWeight: '700', marginTop: 7, textAlign: 'center' },
-  mediaLabelPrimary: { color: '#4D60AE' },
+  padGuide: { position: 'absolute', bottom: 15, alignItems: 'center' },
+  padHint: { color: theme.color.textMuted, fontSize: 11, fontWeight: '600' },
+  padLongHint: { color: theme.color.textSubtle, fontSize: 10, marginTop: theme.space.xxs },
+  textRow: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.sm },
+  textInput: { flex: 1, minHeight: 46, maxHeight: 80, borderRadius: theme.radius.panel, paddingHorizontal: theme.space.md, paddingVertical: theme.space.sm, backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border, color: theme.color.text, fontSize: 13 },
+  sendButton: { width: 66, minHeight: 46, borderRadius: theme.radius.panel, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.primary },
+  sendButtonPressed: { backgroundColor: theme.color.primaryPressed },
+  sendButtonText: { color: theme.color.onPrimary, fontSize: 12, fontWeight: '800' },
+  quickKeys: { flexDirection: 'row', gap: 6, marginTop: 7 },
+  keyButton: { flex: 1, minWidth: 46, minHeight: 44, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
+  keyButtonCompact: { minWidth: 0, minHeight: 40 },
+  keyButtonPressed: { backgroundColor: theme.color.surfacePressed, borderColor: theme.color.borderStrong },
+  keyButtonText: { color: theme.color.textStrong, fontSize: 12, fontWeight: '700' },
+  keyButtonTextPressed: { color: theme.color.text },
+  scrollPanel: { paddingHorizontal: 14, paddingTop: 2, paddingBottom: 24 },
+  sectionHeader: { marginBottom: 12 },
+  sectionTitle: { color: theme.color.text, fontSize: 19, fontWeight: '800' },
+  sectionBody: { color: theme.color.textSubtle, fontSize: 12, lineHeight: 17, marginTop: theme.space.xxs },
+  inlineWarning: { color: theme.color.warning, backgroundColor: theme.color.warningSurface, borderRadius: theme.radius.panel, padding: 10, fontSize: 12, lineHeight: 17, marginTop: 10 },
+  keyboardGroups: { gap: 15 },
+  keyGroup: { gap: 7 },
+  keyboard: { gap: 6 },
+  keyRow: { flexDirection: 'row', gap: 6 },
+  releaseButton: { height: 40, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', marginTop: theme.space.lg, backgroundColor: theme.color.dangerSurface, borderWidth: 1, borderColor: theme.color.dangerBorder },
+  releaseButtonPressed: { backgroundColor: '#F0DEDF' },
+  releaseButtonText: { color: theme.color.danger, fontSize: 12, fontWeight: '700' },
+  actionGroup: { marginTop: 16 },
+  groupTitle: { color: theme.color.textMuted, fontSize: 12, fontWeight: '700' },
+  actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  actionButton: { width: '48.5%', minHeight: 58, borderRadius: theme.radius.panel, paddingHorizontal: theme.space.md, paddingVertical: 9, justifyContent: 'center', backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
+  actionButtonPressed: { backgroundColor: theme.color.surfacePressed },
+  actionButtonUnavailable: { backgroundColor: theme.color.warningSurface, borderColor: theme.color.warningBorder },
+  actionButtonText: { color: theme.color.textStrong, fontSize: 13, fontWeight: '700' },
+  actionStateUnavailable: { color: theme.color.warning, fontSize: 10, fontWeight: '700', marginTop: 4 },
+  mediaPanel: { flex: 1, paddingHorizontal: 14, paddingTop: 2 },
+  mediaGroup: { marginTop: 16 },
+  mediaRow: { flexDirection: 'row', gap: 9, marginTop: 8 },
+  mediaButton: { flex: 1, minHeight: 86, borderRadius: theme.radius.panel, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
+  mediaButtonPrimary: { backgroundColor: theme.color.primary, borderColor: theme.color.primary },
+  mediaButtonPressed: { backgroundColor: theme.color.surfacePressed },
+  mediaButtonPrimaryPressed: { backgroundColor: theme.color.primaryPressed, borderColor: theme.color.primaryPressed },
+  mediaLabel: { color: theme.color.textMuted, fontSize: 10, fontWeight: '700', marginTop: 7, textAlign: 'center' },
+  mediaLabelPrimary: { color: theme.color.onPrimary },
 });

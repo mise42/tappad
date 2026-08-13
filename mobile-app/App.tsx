@@ -1,5 +1,6 @@
 import * as ServiceDiscovery from '@inthepocket/react-native-service-discovery';
 import type { Service } from '@inthepocket/react-native-service-discovery';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as SecureStore from 'expo-secure-store';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -18,6 +19,7 @@ import {
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 
 import { NativeControlSurface } from './src/NativeControlSurface';
+import { theme } from './src/theme';
 
 const SERVICE_TYPE = 'tappad';
 const PAIRINGS_KEY = 'tappad.pairings.v1';
@@ -237,26 +239,45 @@ function AppContent() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.hero}>
-          <Text style={styles.eyebrow}>LOCAL INPUT</Text>
-          <Text style={styles.title}>Nearby TapPad hosts</Text>
-          <Text style={styles.subtitle}>
-            Hosts appear automatically when this phone and the desktop are on the same local network.
-          </Text>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.eyebrow}>TAPPAD</Text>
+            <Text style={styles.title}>{selected ? 'Pair host' : 'Hosts'}</Text>
+          </View>
+          <View style={styles.discoveryStatus}>
+            {discovering && !error ? <ActivityIndicator size="small" color={theme.color.textMuted} /> : (
+              <View style={[styles.statusDot, error && styles.statusDotError]} />
+            )}
+            <Text style={styles.discoveryStatusText}>{error ? 'Attention' : 'Discovering'}</Text>
+          </View>
         </View>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? (
+          <View style={styles.error}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={17} color={theme.color.danger} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
 
         {selected ? (
-          <View style={styles.pairingCard}>
-            <Text style={styles.cardLabel}>PAIR WITH</Text>
-            <Text style={styles.cardTitle}>{displayName(selected)}</Text>
-            <Text style={styles.hostAddress}>{connectionHost(selected)}:{selected.port}</Text>
+          <View style={styles.pairingPanel}>
+            <View style={styles.pairingHeader}>
+              <View style={styles.hostGlyph}>
+                <MaterialCommunityIcons name="monitor" size={20} color={theme.color.textStrong} />
+              </View>
+              <View style={styles.hostDetails}>
+                <Text style={styles.cardTitle}>{displayName(selected)}</Text>
+                <Text style={styles.hostAddress}>{connectionHost(selected)}:{selected.port}</Text>
+              </View>
+            </View>
+            <View style={styles.divider} />
+            <Text style={styles.fieldLabel}>PAIRING TOKEN</Text>
+            <Text style={styles.fieldHint}>Enter the token shown by TapPad Desktop Host.</Text>
             <TextInput
               value={token}
               onChangeText={setToken}
               placeholder="Pairing token"
-              placeholderTextColor="#7A828D"
+              placeholderTextColor={theme.color.textSubtle}
               autoCapitalize="none"
               autoCorrect={false}
               secureTextEntry
@@ -265,11 +286,11 @@ function AppContent() {
               onSubmitEditing={() => void connect(selected, token)}
             />
             <View style={styles.actions}>
-              <Pressable onPress={() => { setSelected(null); setToken(''); setError(null); }} style={styles.secondaryButton}>
+              <Pressable onPress={() => { setSelected(null); setToken(''); setError(null); }} style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}>
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </Pressable>
-              <Pressable onPress={() => void connect(selected, token)} style={[styles.primaryButton, connecting && styles.buttonDisabled]} disabled={connecting}>
-                {connecting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Connect</Text>}
+              <Pressable onPress={() => void connect(selected, token)} style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed, connecting && styles.buttonDisabled]} disabled={connecting}>
+                {connecting ? <ActivityIndicator color={theme.color.onPrimary} /> : <Text style={styles.primaryButtonText}>Connect</Text>}
               </Pressable>
             </View>
           </View>
@@ -283,24 +304,31 @@ function AppContent() {
               return (
                 <Pressable
                   disabled={connecting}
-                  style={[styles.hostCard, connecting && styles.buttonDisabled]}
+                  style={({ pressed }) => [styles.hostCard, pressed && styles.hostCardPressed, connecting && styles.buttonDisabled]}
                   onPress={() => void selectHost(item)}
                 >
-                  <View style={styles.hostIcon}><View style={styles.hostIconDot} /></View>
+                  <View style={styles.hostGlyph}>
+                    <MaterialCommunityIcons name="monitor" size={20} color={theme.color.textStrong} />
+                  </View>
                   <View style={styles.hostDetails}>
                     <Text style={styles.hostName}>{displayName(item)}</Text>
                     <Text style={styles.hostMeta}>{connectionHost(item)}:{item.port}</Text>
                   </View>
-                  <Text style={styles.hostState}>{saved ? 'Paired' : 'Pair'}</Text>
+                  <View style={styles.hostAction}>
+                    <Text style={styles.hostState}>{saved ? 'Paired' : 'Pair'}</Text>
+                    <MaterialCommunityIcons name="chevron-right" size={19} color={theme.color.textSubtle} />
+                  </View>
                 </Pressable>
               );
             }}
             ListEmptyComponent={
               <View style={styles.emptyState}>
-                {discovering ? <ActivityIndicator color="#4361EE" /> : null}
-                <Text style={styles.emptyTitle}>Looking for hosts…</Text>
-                <Text style={styles.emptyBody}>Keep the TapPad Desktop Host running and check that both devices use the same Wi-Fi.</Text>
-                <Pressable onPress={() => void beginDiscovery()} style={styles.retryButton}>
+                <View style={styles.emptyGlyph}>
+                  <MaterialCommunityIcons name="radar" size={24} color={theme.color.textMuted} />
+                </View>
+                <Text style={styles.emptyTitle}>Looking for hosts</Text>
+                <Text style={styles.emptyBody}>Keep TapPad Desktop Host running and connect both devices to the same local network.</Text>
+                <Pressable onPress={() => void beginDiscovery()} style={({ pressed }) => [styles.retryButton, pressed && styles.secondaryButtonPressed]}>
                   <Text style={styles.retryButtonText}>Scan again</Text>
                 </Pressable>
               </View>
@@ -321,35 +349,46 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F5F7FA' },
-  container: { flex: 1, paddingHorizontal: 20 },
-  hero: { paddingTop: 28, paddingBottom: 22 },
-  eyebrow: { color: '#4361EE', fontSize: 12, fontWeight: '800', letterSpacing: 1.7 },
-  title: { color: '#171A21', fontSize: 32, fontWeight: '800', marginTop: 8 },
-  subtitle: { color: '#606873', fontSize: 15, lineHeight: 22, marginTop: 10, maxWidth: 520 },
-  error: { color: '#A32929', backgroundColor: '#FDECEC', borderRadius: 12, padding: 12, marginBottom: 14 },
-  hostList: { gap: 12, paddingBottom: 28, flexGrow: 1 },
-  hostCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#E6E9EF' },
-  hostIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: '#E9EDFF', alignItems: 'center', justifyContent: 'center' },
-  hostIconDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#4361EE' },
-  hostDetails: { flex: 1, marginLeft: 14 },
-  hostName: { color: '#171A21', fontSize: 17, fontWeight: '700' },
-  hostMeta: { color: '#747C87', fontSize: 13, marginTop: 4 },
-  hostState: { color: '#4361EE', fontSize: 14, fontWeight: '700' },
+  safeArea: { flex: 1, backgroundColor: theme.color.canvas },
+  container: { flex: 1, paddingHorizontal: theme.space.lg },
+  header: { minHeight: 82, paddingVertical: theme.space.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  eyebrow: { color: theme.color.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 1.4 },
+  title: { color: theme.color.text, fontSize: 22, fontWeight: '700', marginTop: theme.space.xxs },
+  discoveryStatus: { minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: theme.space.xs, paddingHorizontal: theme.space.sm, borderWidth: 1, borderColor: theme.color.border, borderRadius: theme.radius.control, backgroundColor: theme.color.surface },
+  discoveryStatusText: { color: theme.color.textMuted, fontSize: 12, fontWeight: '600' },
+  statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: theme.color.textSubtle },
+  statusDotError: { backgroundColor: theme.color.danger },
+  error: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.sm, backgroundColor: theme.color.dangerSurface, borderRadius: theme.radius.panel, borderWidth: 1, borderColor: theme.color.dangerBorder, padding: theme.space.md, marginBottom: theme.space.md },
+  errorText: { flex: 1, color: theme.color.danger, fontSize: 13, lineHeight: 18 },
+  hostList: { gap: theme.space.sm, paddingBottom: 28, flexGrow: 1 },
+  hostCard: { minHeight: 66, flexDirection: 'row', alignItems: 'center', backgroundColor: theme.color.surface, borderRadius: theme.radius.panel, paddingHorizontal: theme.space.md, paddingVertical: theme.space.sm, borderWidth: 1, borderColor: theme.color.border },
+  hostCardPressed: { backgroundColor: theme.color.surfacePressed, borderColor: theme.color.borderStrong },
+  hostGlyph: { width: 38, height: 38, borderRadius: theme.radius.control, backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border, alignItems: 'center', justifyContent: 'center' },
+  hostDetails: { flex: 1, marginLeft: theme.space.md },
+  hostName: { color: theme.color.text, fontSize: 15, fontWeight: '700' },
+  hostMeta: { color: theme.color.textMuted, fontSize: 12, marginTop: theme.space.xxs },
+  hostAction: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xxs, marginLeft: theme.space.sm },
+  hostState: { color: theme.color.textMuted, fontSize: 12, fontWeight: '700' },
   emptyState: { flex: 1, minHeight: 300, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
-  emptyTitle: { color: '#252A33', fontSize: 18, fontWeight: '700', marginTop: 16 },
-  emptyBody: { color: '#717985', fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 8 },
-  retryButton: { marginTop: 20, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 12, backgroundColor: '#E9EDFF' },
-  retryButtonText: { color: '#3651CF', fontWeight: '700' },
-  pairingCard: { backgroundColor: '#FFFFFF', borderRadius: 22, padding: 20, borderWidth: 1, borderColor: '#E6E9EF' },
-  cardLabel: { color: '#7A828D', fontSize: 11, fontWeight: '800', letterSpacing: 1.5 },
-  cardTitle: { color: '#171A21', fontSize: 24, fontWeight: '800', marginTop: 8 },
-  hostAddress: { color: '#747C87', fontSize: 14, marginTop: 5 },
-  input: { height: 52, borderWidth: 1, borderColor: '#CDD2DB', borderRadius: 13, paddingHorizontal: 14, fontSize: 16, color: '#171A21', marginTop: 22 },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 16 },
-  secondaryButton: { flex: 1, height: 50, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF0F4' },
-  secondaryButtonText: { color: '#454C57', fontSize: 16, fontWeight: '700' },
-  primaryButton: { flex: 1, height: 50, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#4361EE' },
-  primaryButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-  buttonDisabled: { opacity: 0.65 },
+  emptyGlyph: { width: 44, height: 44, borderRadius: theme.radius.panel, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
+  emptyTitle: { color: theme.color.textStrong, fontSize: 16, fontWeight: '700', marginTop: theme.space.md },
+  emptyBody: { color: theme.color.textMuted, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: theme.space.xs, maxWidth: 340 },
+  retryButton: { marginTop: theme.space.lg, minHeight: 38, paddingHorizontal: theme.space.md, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
+  retryButtonText: { color: theme.color.textStrong, fontSize: 13, fontWeight: '700' },
+  pairingPanel: { backgroundColor: theme.color.surface, borderRadius: theme.radius.panel, padding: theme.space.lg, borderWidth: 1, borderColor: theme.color.border },
+  pairingHeader: { flexDirection: 'row', alignItems: 'center' },
+  divider: { height: 1, backgroundColor: theme.color.border, marginVertical: theme.space.lg },
+  fieldLabel: { color: theme.color.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
+  fieldHint: { color: theme.color.textMuted, fontSize: 13, lineHeight: 18, marginTop: theme.space.xs },
+  cardTitle: { color: theme.color.text, fontSize: 16, fontWeight: '700' },
+  hostAddress: { color: theme.color.textMuted, fontSize: 12, marginTop: theme.space.xxs },
+  input: { height: 44, borderWidth: 1, borderColor: theme.color.borderStrong, borderRadius: theme.radius.control, paddingHorizontal: theme.space.md, fontSize: 15, color: theme.color.text, backgroundColor: theme.color.canvas, marginTop: theme.space.md },
+  actions: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.md },
+  secondaryButton: { flex: 1, height: 42, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
+  secondaryButtonPressed: { backgroundColor: theme.color.surfacePressed, borderColor: theme.color.borderStrong },
+  secondaryButtonText: { color: theme.color.textStrong, fontSize: 14, fontWeight: '700' },
+  primaryButton: { flex: 1, height: 42, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.primary },
+  primaryButtonPressed: { backgroundColor: theme.color.primaryPressed },
+  primaryButtonText: { color: theme.color.onPrimary, fontSize: 14, fontWeight: '700' },
+  buttonDisabled: { opacity: 0.55 },
 });
