@@ -54,9 +54,6 @@ export type ServerMessage = {
 export const POINTER_BUTTONS = ['left', 'right', 'middle'] as const;
 
 const WORKSPACE_ACTIONS: WorkspaceAction[] = [
-  { label: 'Previous', action: 'workspace.previous' },
-  { label: 'Former', action: 'workspace.former' },
-  { label: 'Next', action: 'workspace.next' },
   { label: '1', action: 'workspace.1' },
   { label: '2', action: 'workspace.2' },
   { label: '3', action: 'workspace.3' },

@@ -694,8 +694,6 @@ function ActionsPanel({ capabilities, capabilityError, sendAction }: {
   sendAction: (label: string, action: string) => void;
 }) {
   const workspaceActions = supportedWorkspaceActions(capabilities);
-  const workspaceNavigation = workspaceActions.filter(({ action }) => !/^workspace\.\d+$/.test(action));
-  const numberedWorkspaces = workspaceActions.filter(({ action }) => /^workspace\.\d+$/.test(action));
 
   return (
     <ScrollView contentContainerStyle={styles.scrollPanel} showsVerticalScrollIndicator={false}>
@@ -708,21 +706,8 @@ function ActionsPanel({ capabilities, capabilityError, sendAction }: {
         <View style={styles.actionGroup}>
           <Text style={styles.groupTitle}>Workspaces</Text>
           <View style={styles.workspaceControls}>
-            <View style={styles.workspaceNavigationRow}>
-              {workspaceNavigation.map(({ label, action }) => (
-                <Pressable
-                  key={action}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Switch to ${label.toLowerCase()} workspace`}
-                  onPress={() => sendAction(label, action)}
-                  style={({ pressed }) => [styles.workspaceNavigationButton, pressed && styles.actionButtonPressed]}
-                >
-                  <Text style={styles.actionButtonText}>{label}</Text>
-                </Pressable>
-              ))}
-            </View>
             <View style={styles.workspaceNumberRow}>
-              {numberedWorkspaces.map(({ label, action }) => (
+              {workspaceActions.map(({ label, action }) => (
                 <Pressable
                   key={action}
                   accessibilityRole="button"
@@ -868,9 +853,7 @@ const styles = StyleSheet.create({
   actionButtonUnavailable: { backgroundColor: theme.color.warningSurface, borderColor: theme.color.warningBorder },
   actionButtonText: { color: theme.color.textStrong, fontSize: 13, fontWeight: '700' },
   actionStateUnavailable: { color: theme.color.warning, fontSize: 10, fontWeight: '700', marginTop: 4 },
-  workspaceControls: { gap: 8, marginTop: 8 },
-  workspaceNavigationRow: { flexDirection: 'row', gap: 8 },
-  workspaceNavigationButton: { flex: 1, minHeight: 48, borderRadius: theme.radius.panel, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
+  workspaceControls: { marginTop: 8 },
   workspaceNumberRow: { flexDirection: 'row', gap: 8 },
   workspaceNumberButton: { flex: 1, minHeight: 48, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
   workspaceNumberText: { color: theme.color.textStrong, fontSize: 15, fontWeight: '800' },

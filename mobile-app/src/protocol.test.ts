@@ -58,12 +58,20 @@ test('pairing token is encoded in the existing websocket URL', () => {
 test('workspace controls only include actions the Host supports', () => {
   assert.deepEqual(supportedWorkspaceActions(null), []);
   assert.deepEqual(supportedWorkspaceActions({
+    'workspace.previous': { state: 'supported' },
+    'workspace.former': { state: 'supported' },
     'workspace.next': { state: 'supported' },
-    'workspace.former': { state: 'hidden' },
+    'workspace.1': { state: 'supported' },
+    'workspace.2': { state: 'supported' },
     'workspace.3': { state: 'supported' },
+    'workspace.4': { state: 'supported' },
+    'workspace.5': { state: 'supported' },
     'workspace.6': { state: 'supported' },
   }), [
-    { label: 'Next', action: 'workspace.next' },
+    { label: '1', action: 'workspace.1' },
+    { label: '2', action: 'workspace.2' },
     { label: '3', action: 'workspace.3' },
+    { label: '4', action: 'workspace.4' },
+    { label: '5', action: 'workspace.5' },
   ]);
 });
