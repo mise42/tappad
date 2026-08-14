@@ -19,6 +19,7 @@ import {
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 
 import { NativeControlSurface } from './src/NativeControlSurface';
+import { PairingQrScanner } from './src/pairing-qr-scanner';
 import { theme } from './src/theme';
 
 const SERVICE_TYPE = 'tappad';
@@ -56,6 +57,11 @@ function connectionHost(service: Service) {
   const address = service.addresses.find((candidate) => candidate.includes('.')) ?? service.addresses[0];
   if (!address) throw new Error('The host did not publish a reachable address.');
   return urlHost(address);
+}
+
+function pairingHosts(service: Service) {
+  return [service.txt.ipv4, service.txt.host, service.hostName, ...service.addresses]
+    .filter((host): host is string => Boolean(host));
 }
 
 function websocketUrl(service: Service, token: string) {
@@ -111,6 +117,7 @@ function AppContent() {
   const [pairings, setPairings] = useState<Pairings>({});
   const [selected, setSelected] = useState<Service | null>(null);
   const [token, setToken] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [connectedHost, setConnectedHost] = useState<ConnectedHost | null>(null);
   const [discovering, setDiscovering] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -235,6 +242,22 @@ function AppContent() {
     );
   }
 
+  if (scannerOpen && selected) {
+    return (
+      <PairingQrScanner
+        allowedHosts={pairingHosts(selected)}
+        expectedPort={selected.port}
+        hostName={displayName(selected)}
+        onCancel={() => setScannerOpen(false)}
+        onToken={(scannedToken) => {
+          setScannerOpen(false);
+          setToken(scannedToken);
+          void connect(selected, scannedToken);
+        }}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
@@ -271,8 +294,22 @@ function AppContent() {
               </View>
             </View>
             <View style={styles.divider} />
-            <Text style={styles.fieldLabel}>PAIRING TOKEN</Text>
-            <Text style={styles.fieldHint}>Enter the token shown by TapPad Desktop Host.</Text>
+            <Text style={styles.fieldLabel}>SCAN PAIRING QR</Text>
+            <Text style={styles.fieldHint}>Scan the code shown by TapPad Desktop Host to pair securely.</Text>
+            <Pressable
+              onPress={() => { setError(null); setScannerOpen(true); }}
+              style={({ pressed }) => [styles.scanButton, pressed && styles.primaryButtonPressed]}
+              disabled={connecting}
+            >
+              <MaterialCommunityIcons name="qrcode-scan" size={19} color={theme.color.onPrimary} />
+              <Text style={styles.scanButtonText}>Scan QR code</Text>
+            </Pressable>
+            <View style={styles.orRow}>
+              <View style={styles.orLine} />
+              <Text style={styles.orText}>OR ENTER TOKEN</Text>
+              <View style={styles.orLine} />
+            </View>
+            <Text style={styles.fieldHint}>Enter the token manually if the camera is unavailable.</Text>
             <TextInput
               value={token}
               onChangeText={setToken}
@@ -286,7 +323,7 @@ function AppContent() {
               onSubmitEditing={() => void connect(selected, token)}
             />
             <View style={styles.actions}>
-              <Pressable onPress={() => { setSelected(null); setToken(''); setError(null); }} style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}>
+              <Pressable onPress={() => { setSelected(null); setToken(''); setScannerOpen(false); setError(null); }} style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}>
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </Pressable>
               <Pressable onPress={() => void connect(selected, token)} style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed, connecting && styles.buttonDisabled]} disabled={connecting}>
@@ -383,6 +420,11 @@ const styles = StyleSheet.create({
   cardTitle: { color: theme.color.text, fontSize: 16, fontWeight: '700' },
   hostAddress: { color: theme.color.textMuted, fontSize: 12, marginTop: theme.space.xxs },
   input: { height: 44, borderWidth: 1, borderColor: theme.color.borderStrong, borderRadius: theme.radius.control, paddingHorizontal: theme.space.md, fontSize: 15, color: theme.color.text, backgroundColor: theme.color.canvas, marginTop: theme.space.md },
+  scanButton: { height: 44, marginTop: theme.space.md, borderRadius: theme.radius.control, flexDirection: 'row', gap: theme.space.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.primary },
+  scanButtonText: { color: theme.color.onPrimary, fontSize: 14, fontWeight: '700' },
+  orRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, marginTop: theme.space.lg },
+  orLine: { flex: 1, height: 1, backgroundColor: theme.color.border },
+  orText: { color: theme.color.textSubtle, fontSize: 9, fontWeight: '800', letterSpacing: 1 },
   actions: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.md },
   secondaryButton: { flex: 1, height: 42, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
   secondaryButtonPressed: { backgroundColor: theme.color.surfacePressed, borderColor: theme.color.borderStrong },

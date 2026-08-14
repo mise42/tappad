@@ -5,9 +5,10 @@
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
     "@inthepocket/react-native-service-discovery": "^0.2.11",
-    "expo": "~57.0.11",
-    "expo-build-properties": "~57.0.9",
-    "expo-dev-client": "~57.0.10",
+    "expo": "~57.0.12",
+    "expo-build-properties": "~57.0.10",
+    "expo-camera": "~57.0.3",
+    "expo-dev-client": "~57.0.11",
     "expo-secure-store": "~57.0.1",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.2",
