@@ -10,7 +10,9 @@ use tokio::sync::Mutex;
 
 use crate::input::InputDevice;
 
-use super::{ActionError, CapabilityStatus, scoped_capability};
+use crate::host_contract::CapabilityStatus;
+
+use super::{ActionError, scoped_capability};
 
 mod metadata;
 

@@ -2,12 +2,12 @@ use std::{path::Path, sync::Arc};
 
 use tokio::sync::Mutex;
 
-use crate::input::InputDevice;
-
-use super::{
-    ActionError, ActionFuture, CapabilityStatus, DesktopActionAdapter, capability,
-    run_shell_command,
+use crate::{
+    host_contract::{ACTION_IDS, CapabilityStatus},
+    input::InputDevice,
 };
+
+use super::{ActionError, ActionFuture, DesktopActionAdapter, capability, run_shell_command};
 
 pub(super) struct WindowsActionAdapter;
 
@@ -58,6 +58,7 @@ impl DesktopActionAdapter for WindowsActionAdapter {
                 ),
             ),
             "screenrecord.screen.webcam" => capability("hidden", None),
+            action if action.starts_with("workspace.") => capability("hidden", None),
             _ => capability("supported", None),
         }
     }
@@ -140,8 +141,6 @@ async fn open_recordings_folder(action: &str) -> Result<(), ActionError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::ACTION_IDS;
-
     #[test]
     fn close_window_keeps_the_alt_f4_chord() {
         assert_eq!(

@@ -4,10 +4,10 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 
 use crate::{
-    actions::{CapabilityStatus, action_capabilities, capability},
+    actions::capability,
     diagnostics::{DiagnosticsSummary, diagnostics_summary},
-    input::{InputCapabilities, input_capabilities},
-    protocol::PROTOCOL_VERSION,
+    host_contract::{CapabilityStatus, HostContract, current_host_contract},
+    input::InputCapabilities,
     settings::RuntimeSettings,
 };
 
@@ -71,6 +71,7 @@ pub struct HostSurfaceState {
     pub actions: BTreeMap<String, CapabilityStatus>,
     pub protocol: ProtocolState,
     pub diagnostics: DiagnosticsSummary,
+    pub contract: HostContract,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -88,6 +89,7 @@ pub fn host_surface_state(
     input_ready: bool,
     input_error: Option<String>,
 ) -> HostSurfaceState {
+    let contract = current_host_contract();
     let diagnostics = diagnostics_summary(
         settings,
         backend_running,
@@ -118,12 +120,13 @@ pub fn host_surface_state(
                 Some("Managed by the Tauri autostart plugin."),
             ),
         },
-        actions: action_capabilities(),
+        actions: contract.action_capabilities.clone(),
         protocol: ProtocolState {
-            version: PROTOCOL_VERSION,
-            input_capabilities: input_capabilities(),
+            version: contract.protocol_version,
+            input_capabilities: contract.input_capabilities.clone(),
         },
         diagnostics,
+        contract,
     }
 }
 
@@ -283,6 +286,10 @@ fn readiness(label: &'static str, state: &'static str, note: Option<&str>) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        actions::action_capabilities, host_contract::HOST_CONTRACT_VERSION,
+        protocol::PROTOCOL_VERSION,
+    };
 
     fn test_settings() -> RuntimeSettings {
         RuntimeSettings {
@@ -314,6 +321,13 @@ mod tests {
         );
         assert!(state.server_status.token_enabled);
         assert_eq!(state.protocol.version, PROTOCOL_VERSION);
+        assert_eq!(state.contract.version, HOST_CONTRACT_VERSION);
+        assert_eq!(state.contract.protocol_version, state.protocol.version);
+        assert_eq!(state.contract.action_capabilities, state.actions);
+        assert_eq!(
+            state.contract.input_capabilities,
+            state.protocol.input_capabilities
+        );
         assert!(
             state
                 .protocol

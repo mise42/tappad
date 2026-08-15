@@ -22,12 +22,22 @@ export type ActionCapability = {
 
 export type ActionCapabilities = Record<string, ActionCapability>;
 
+export const HOST_CONTRACT_VERSION = 1;
+
+export type HostContract = {
+  version?: number;
+  protocolVersion?: number;
+  inputCapabilities?: InputCapabilities;
+  actionCapabilities?: ActionCapabilities;
+};
+
 export type WorkspaceAction = {
   label: string;
   action: string;
 };
 
 export type HostState = {
+  contract?: HostContract;
   actions?: ActionCapabilities;
   protocol?: {
     version?: number;
@@ -54,6 +64,7 @@ export type ServerMessage = {
   message?: string;
   action?: string;
   status?: string;
+  contract?: HostContract;
 };
 
 export const POINTER_BUTTONS = ['left', 'right', 'middle'] as const;
@@ -101,10 +112,29 @@ export function releaseInputMessages(
 }
 
 export function supportsPointerButton(message: ServerMessage) {
+  const contract = understoodContract(message.contract);
+  if (contract) {
+    return (
+      (contract.protocolVersion ?? 0) >= 2 &&
+      contract.inputCapabilities?.pointerButton?.state === 'supported'
+    );
+  }
   return (
     (message.protocolVersion ?? 0) >= 2 &&
     message.inputCapabilities?.pointerButton?.state === 'supported'
   );
+}
+
+export function hostStateActionCapabilities(state: HostState) {
+  return understoodContract(state.contract)?.actionCapabilities ?? state.actions ?? {};
+}
+
+export function readyActionCapabilities(message: ServerMessage) {
+  return understoodContract(message.contract)?.actionCapabilities ?? null;
+}
+
+function understoodContract(contract: HostContract | undefined) {
+  return contract?.version === HOST_CONTRACT_VERSION ? contract : undefined;
 }
 
 export function supportedWorkspaceActions(capabilities: ActionCapabilities | null) {

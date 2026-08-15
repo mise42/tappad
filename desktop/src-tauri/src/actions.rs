@@ -1,9 +1,11 @@
 use std::{collections::BTreeMap, fmt, future::Future, pin::Pin, sync::Arc};
 
-use serde::Serialize;
 use tokio::sync::Mutex;
 
-use crate::input::InputDevice;
+use crate::{
+    host_contract::{ACTION_IDS, CapabilityStatus},
+    input::InputDevice,
+};
 
 #[cfg(target_os = "linux")]
 mod codex;
@@ -13,25 +15,6 @@ mod linux;
 mod macos;
 #[cfg(any(target_os = "windows", test))]
 mod windows;
-
-#[derive(Debug, Clone, Serialize)]
-pub struct CapabilityStatus {
-    pub state: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub note: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scope: Option<&'static str>,
-    #[serde(rename = "reasonCode", skip_serializing_if = "Option::is_none")]
-    pub reason_code: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub binding: Option<String>,
-}
-
-impl CapabilityStatus {
-    fn is_runnable(&self) -> bool {
-        matches!(self.state, "supported" | "deferred")
-    }
-}
 
 pub const UI_ACTION_IDS: &[&str] = &[
     "screenrecord.screen",
@@ -50,40 +33,6 @@ pub const UI_ACTION_IDS: &[&str] = &[
     "media.volume_down",
     "media.mute",
     "media.volume_up",
-];
-
-pub const ACTION_IDS: &[&str] = &[
-    "screenrecord.screen",
-    "screenrecord.window",
-    "screenrecord.screen.audio",
-    "screenrecord.screen.webcam",
-    "screenrecord.stop",
-    "open_recordings_folder",
-    "screenshot",
-    "close_window",
-    "app_launcher",
-    "lock_screen",
-    "media.prev",
-    "media.play_pause",
-    "media.next",
-    "media.volume_down",
-    "media.mute",
-    "media.volume_up",
-    "codex.voice.start",
-    "codex.voice.start_foreground",
-    "codex.voice.end",
-    "codex.voice.toggle_microphone",
-];
-
-pub const OMARCHY_ACTION_IDS: &[&str] = &[
-    "workspace.previous",
-    "workspace.former",
-    "workspace.next",
-    "workspace.1",
-    "workspace.2",
-    "workspace.3",
-    "workspace.4",
-    "workspace.5",
 ];
 
 pub fn reports_execution_result(action: &str) -> bool {
@@ -119,9 +68,6 @@ pub(crate) type ActionFuture<'a> =
 
 pub(crate) trait DesktopActionAdapter: Send + Sync {
     fn platform_name(&self) -> &'static str;
-    fn additional_action_ids(&self) -> &'static [&'static str] {
-        &[]
-    }
     fn capability(&self, action: &str) -> CapabilityStatus;
     fn execute<'a>(&'a self, input: Arc<Mutex<InputDevice>>, action: &'a str) -> ActionFuture<'a>;
 }
@@ -141,11 +87,17 @@ impl DesktopActions {
                 .iter()
                 .all(|action| ACTION_IDS.contains(action))
         );
-        ACTION_IDS
+        let capabilities = ACTION_IDS
             .iter()
-            .chain(self.adapter.additional_action_ids())
             .map(|action| ((*action).to_string(), self.adapter.capability(action)))
-            .collect()
+            .collect::<BTreeMap<_, _>>();
+        debug_assert!(
+            capabilities
+                .values()
+                .all(|capability| crate::host_contract::CAPABILITY_STATES
+                    .contains(&capability.state))
+        );
+        capabilities
     }
 
     pub async fn run(
@@ -158,8 +110,7 @@ impl DesktopActions {
     }
 
     pub(crate) fn validate(&self, action: &str) -> Result<(), ActionError> {
-        if !ACTION_IDS.contains(&action) && !self.adapter.additional_action_ids().contains(&action)
-        {
+        if !ACTION_IDS.contains(&action) {
             return Err(ActionError::unknown(action));
         }
 
@@ -365,10 +316,36 @@ impl DesktopActionAdapter for UnsupportedActionAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::host_contract::CAPABILITY_STATES;
 
     struct StubAdapter {
         state: &'static str,
         note: Option<&'static str>,
+    }
+
+    fn assert_adapter_contract(adapter: Arc<dyn DesktopActionAdapter>) {
+        let actions = DesktopActions::new(adapter);
+        let capabilities = actions.capabilities();
+
+        assert_eq!(capabilities.len(), ACTION_IDS.len());
+        for action in ACTION_IDS {
+            let capability = capabilities
+                .get(*action)
+                .unwrap_or_else(|| panic!("adapter omitted {action}"));
+            assert!(
+                CAPABILITY_STATES.contains(&capability.state),
+                "{action} has unknown state {}",
+                capability.state
+            );
+        }
+    }
+
+    #[test]
+    fn every_target_adapter_satisfies_the_shared_capability_catalog() {
+        #[cfg(target_os = "linux")]
+        assert_adapter_contract(Arc::new(linux::LinuxActionAdapter));
+        assert_adapter_contract(Arc::new(macos::MacOsActionAdapter));
+        assert_adapter_contract(Arc::new(windows::WindowsActionAdapter));
     }
 
     impl DesktopActionAdapter for StubAdapter {
@@ -396,27 +373,19 @@ mod tests {
         for action in ACTION_IDS {
             assert!(capabilities.contains_key(*action), "missing {action}");
         }
-        #[cfg(target_os = "linux")]
-        assert_eq!(
-            capabilities.len(),
-            ACTION_IDS.len() + OMARCHY_ACTION_IDS.len()
-        );
-        #[cfg(not(target_os = "linux"))]
         assert_eq!(capabilities.len(), ACTION_IDS.len());
         assert!(!capabilities.contains_key("raw-shell"));
     }
 
-    #[cfg(target_os = "linux")]
     #[test]
-    fn omarchy_workspace_actions_are_advertised_as_supported() {
+    fn workspace_actions_are_part_of_the_shared_contract() {
         let capabilities = action_capabilities();
 
-        for action in OMARCHY_ACTION_IDS {
-            assert_eq!(
-                capabilities.get(*action).map(|capability| capability.state),
-                Some("supported"),
-                "missing supported capability for {action}"
-            );
+        for action in ACTION_IDS
+            .iter()
+            .filter(|action| action.starts_with("workspace."))
+        {
+            assert!(capabilities.contains_key(*action), "missing {action}");
         }
     }
 
@@ -505,18 +474,13 @@ mod tests {
     }
 
     #[test]
-    fn platform_specific_actions_require_adapter_advertisement() {
+    fn shared_workspace_actions_are_valid_when_the_adapter_supports_them() {
         let actions = DesktopActions::new(Arc::new(StubAdapter {
             state: "supported",
             note: None,
         }));
 
-        assert_eq!(
-            actions.validate("workspace.1"),
-            Err(ActionError::Unknown {
-                action: "workspace.1".to_string(),
-            })
-        );
+        assert_eq!(actions.validate("workspace.1"), Ok(()));
     }
 
     #[test]

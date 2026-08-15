@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  hostStateActionCapabilities,
   releaseInputMessages,
   releaseMessages,
+  readyActionCapabilities,
   serializeMessage,
   socketUrl,
   supportedWorkspaceActions,
@@ -42,6 +44,43 @@ test('pointer button requires the versioned Host capability', () => {
     protocolVersion: 2,
     inputCapabilities: { pointerButton: { state: 'unsupported' } },
   }), false);
+});
+
+test('Host Contract is authoritative when its version is understood', () => {
+  const contract = {
+    version: 1,
+    protocolVersion: 2,
+    inputCapabilities: { pointerButton: { state: 'supported' } },
+    actionCapabilities: { screenshot: { state: 'supported' as const } },
+  };
+
+  assert.equal(supportsPointerButton({
+    type: 'ready',
+    protocolVersion: 1,
+    inputCapabilities: { pointerButton: { state: 'unsupported' } },
+    contract,
+  }), true);
+  assert.deepEqual(readyActionCapabilities({ type: 'ready', contract }), contract.actionCapabilities);
+  assert.deepEqual(hostStateActionCapabilities({
+    contract,
+    actions: { screenshot: { state: 'unavailable' } },
+  }), contract.actionCapabilities);
+});
+
+test('legacy and unknown Host Contracts degrade to existing capability fields', () => {
+  const legacyActions = { screenshot: { state: 'supported' as const } };
+  assert.deepEqual(hostStateActionCapabilities({ actions: legacyActions }), legacyActions);
+  assert.deepEqual(hostStateActionCapabilities({
+    contract: {
+      version: 99,
+      actionCapabilities: { screenshot: { state: 'unavailable' } },
+    },
+    actions: legacyActions,
+  }), legacyActions);
+  assert.equal(readyActionCapabilities({
+    type: 'ready',
+    contract: { version: 99, actionCapabilities: legacyActions },
+  }), null);
 });
 
 test('release cleanup emits one key-up per held key', () => {

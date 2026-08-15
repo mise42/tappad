@@ -37,10 +37,12 @@ import {
 } from './gestureState';
 import { keyboardInsetFromFrame } from './keyboard-insets';
 import {
+  hostStateActionCapabilities,
   hostStateUrl,
   POINTER_BUTTONS,
   RELEASABLE_KEYS,
   releaseInputMessages,
+  readyActionCapabilities,
   serializeMessage,
   socketUrl,
   supportedWorkspaceActions,
@@ -227,7 +229,7 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
       if (!response.ok) throw new Error(`Host returned HTTP ${response.status}.`);
       const state = await response.json() as HostState;
       if (!mountedRef.current || capabilityRequestRef.current !== request) return;
-      setCapabilities(state.actions ?? {});
+      setCapabilities(hostStateActionCapabilities(state));
       setCapabilityError(null);
     } catch (cause: unknown) {
       if (!mountedRef.current || capabilityRequestRef.current !== request) return;
@@ -262,6 +264,8 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
         setConnectionState('connected');
         setConnectionError(null);
         setPointerButtonSupported(supportsPointerButton(message));
+        const readyCapabilities = readyActionCapabilities(message);
+        if (readyCapabilities) setCapabilities(readyCapabilities);
         void loadCapabilities();
         // Recover from an interrupted previous socket before accepting new input.
         for (const messageToSend of releaseInputMessages(POINTER_BUTTONS, RELEASABLE_KEYS)) {

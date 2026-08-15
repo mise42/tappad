@@ -27,6 +27,7 @@ use crate::{
     actions::{DesktopActions, action_capabilities, platform_actions},
     diagnostics::{record_action_attempt, record_action_failure, record_action_success},
     discovery,
+    host_contract::current_host_contract,
     host_surface::{HostSurfaceState, host_surface_state, render_mobile_index},
     input::{InputDevice, input_capabilities},
     protocol::{ClientMessage, ServerMessage},
@@ -149,7 +150,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<BackendRuntime>, client
     info!("client connected: {client_id}");
     let mut client_input = ClientInputState::default();
 
-    let ready = ServerMessage::ready(state.settings.hostname.clone(), input_capabilities());
+    let ready = ServerMessage::ready(state.settings.hostname.clone(), current_host_contract());
     let _ = socket
         .send(WsMessage::Text(
             serde_json::to_string(&ready).unwrap_or_default().into(),

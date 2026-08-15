@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::input::InputCapabilities;
+use crate::{host_contract::HostContract, input::InputCapabilities};
 
 pub const PROTOCOL_VERSION: u16 = 2;
 
@@ -48,6 +48,7 @@ pub enum ServerMessage {
         protocol_version: u16,
         #[serde(rename = "inputCapabilities")]
         input_capabilities: InputCapabilities,
+        contract: HostContract,
     },
     #[serde(rename = "error")]
     Error { code: &'static str, message: String },
@@ -60,15 +61,16 @@ pub enum ServerMessage {
 }
 
 impl ServerMessage {
-    pub fn ready(host: String, input_capabilities: InputCapabilities) -> Self {
+    pub fn ready(host: String, contract: HostContract) -> Self {
         Self::Ready {
             host,
             time: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as u64,
-            protocol_version: PROTOCOL_VERSION,
-            input_capabilities,
+            protocol_version: contract.protocol_version,
+            input_capabilities: contract.input_capabilities.clone(),
+            contract,
         }
     }
 
@@ -95,20 +97,26 @@ impl ServerMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::input::input_capabilities;
+    use crate::host_contract::{HOST_CONTRACT_VERSION, current_host_contract};
 
     #[test]
     fn ready_advertises_protocol_and_input_capabilities() {
         let value = serde_json::to_value(ServerMessage::ready(
             "host".to_string(),
-            input_capabilities(),
+            current_host_contract(),
         ))
         .expect("ready JSON");
 
         assert_eq!(value["type"], "ready");
         assert_eq!(value["protocolVersion"], PROTOCOL_VERSION);
+        assert_eq!(value["contract"]["version"], HOST_CONTRACT_VERSION);
+        assert_eq!(value["contract"]["protocolVersion"], PROTOCOL_VERSION);
         assert_eq!(
             value["inputCapabilities"]["pointerButton"]["state"],
+            "supported"
+        );
+        assert_eq!(
+            value["contract"]["actionCapabilities"]["workspace.1"]["state"],
             "supported"
         );
     }

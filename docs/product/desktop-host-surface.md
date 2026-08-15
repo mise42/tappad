@@ -6,6 +6,8 @@ The desktop host surface gives each target desktop a consistent way to start Tap
 
 TapPad should feel like one product across macOS, Windows, and Linux even when each target backend uses different platform APIs.
 
+The shared mobile-facing interface is defined in the [Host Contract](host-contract.md). Target-specific behavior stays behind a Host Adapter.
+
 ## Platform posture
 
 - macOS, Windows, and Linux share the Tauri host surface.
@@ -48,6 +50,8 @@ Readiness should be shown in layers:
 - **Core input readiness**: pointer, keyboard, text transfer, and paste.
 - **Action readiness**: screenshot, recording, audio capture, window control, night color, and media control.
 - **Deferred action readiness**: only shown for deferred actions that are visible on the current target backend, such as webcam recording on Linux/Omarchy.
+
+Every Host Adapter declares a state for every action in the shared Host Contract. A target-specific action may be unavailable or hidden on another backend, but it does not become a target-specific protocol id.
 
 ## Boundary
 

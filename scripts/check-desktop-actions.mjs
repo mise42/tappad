@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 const files = {
   frontend: "mobile/index.html",
   desktopActions: "desktop/src-tauri/src/actions.rs",
+  hostContract: "desktop/src-tauri/src/host_contract.rs",
   nativeCodexVoice: "mobile-app/src/codexVoice.ts",
+  mobileProtocol: "mobile-app/src/protocol.ts",
 };
 
 const text = Object.fromEntries(
@@ -12,9 +14,13 @@ const text = Object.fromEntries(
 
 const frontendActions = uniqueMatches(text.frontend, /data-cmd="([^"]+)"/g);
 const uiActions = rustConstArrayActions(text.desktopActions, "UI_ACTION_IDS");
-const desktopActions = rustConstArrayActions(text.desktopActions, "ACTION_IDS");
+const desktopActions = rustConstArrayActions(text.hostContract, "ACTION_IDS");
 const nativeCodexActions = uniqueMatches(text.nativeCodexVoice, /'(codex\.voice\.[^']+)'/g);
 const desktopCodexActions = desktopActions.filter((action) => action.startsWith("codex.voice."));
+const nativeWorkspaceActions = uniqueMatches(text.mobileProtocol, /action:\s*'(workspace\.[^']+)'/g);
+const desktopWorkspaceActions = desktopActions.filter((action) => action.startsWith("workspace."));
+const rustContractVersion = requiredMatch(text.hostContract, /HOST_CONTRACT_VERSION:\s*u16\s*=\s*(\d+)/, "Rust Host Contract version");
+const mobileContractVersion = requiredMatch(text.mobileProtocol, /HOST_CONTRACT_VERSION\s*=\s*(\d+)/, "mobile Host Contract version");
 
 assertNoRawShellDesktopAction(frontendActions, "frontend");
 assertNoRawShellDesktopAction(desktopActions, "Desktop host actions");
@@ -24,9 +30,13 @@ assertSameSet(frontendActions, uiActions, "frontend data-cmd", "Desktop host UI 
 assertSubset(uiActions, desktopActions, "Desktop host UI actions", "Desktop host actions");
 assertSubset(nativeCodexActions, desktopActions, "Native Codex actions", "Desktop host actions");
 assertSameSet(nativeCodexActions, desktopCodexActions, "Native Codex actions", "Desktop Codex actions");
+assertSubset(nativeWorkspaceActions, desktopWorkspaceActions, "Native workspace actions", "Host Contract workspace actions");
+if (rustContractVersion !== mobileContractVersion) {
+  fail(`Host Contract version mismatch: Rust=${rustContractVersion}, mobile=${mobileContractVersion}`);
+}
 
 console.log(
-  `Desktop Action check passed for ${frontendActions.length} frontend actions, ${nativeCodexActions.length} native Codex actions, and ${desktopActions.length} host actions.`,
+  `Desktop Action check passed for Host Contract v${rustContractVersion}, ${frontendActions.length} frontend actions, ${nativeCodexActions.length} native Codex actions, and ${desktopActions.length} host actions.`,
 );
 
 function uniqueMatches(source, pattern) {
@@ -39,6 +49,12 @@ function rustConstArrayActions(source, name) {
     fail(`Rust const array ${name} not found.`);
   }
   return uniqueMatches(match[1], /"([^"]+)"/g);
+}
+
+function requiredMatch(source, pattern, label) {
+  const match = source.match(pattern);
+  if (!match) fail(`${label} not found.`);
+  return match[1];
 }
 
 function assertNoRawShellDesktopAction(actions, label) {

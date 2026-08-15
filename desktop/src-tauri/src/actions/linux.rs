@@ -2,23 +2,16 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
-use crate::input::InputDevice;
+use crate::{host_contract::CapabilityStatus, input::InputDevice};
 
 use super::codex;
-use super::{
-    ActionError, ActionFuture, CapabilityStatus, DesktopActionAdapter, OMARCHY_ACTION_IDS,
-    capability, run_shell_command,
-};
+use super::{ActionError, ActionFuture, DesktopActionAdapter, capability, run_shell_command};
 
 pub(super) struct LinuxActionAdapter;
 
 impl DesktopActionAdapter for LinuxActionAdapter {
     fn platform_name(&self) -> &'static str {
         "Linux"
-    }
-
-    fn additional_action_ids(&self) -> &'static [&'static str] {
-        OMARCHY_ACTION_IDS
     }
 
     fn capability(&self, action: &str) -> CapabilityStatus {
@@ -98,11 +91,10 @@ fn linux_command(action: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::{ACTION_IDS, OMARCHY_ACTION_IDS};
-
+    use crate::host_contract::ACTION_IDS;
     #[test]
     fn every_advertised_linux_action_has_an_implementation() {
-        for action in ACTION_IDS.iter().chain(OMARCHY_ACTION_IDS) {
+        for action in ACTION_IDS {
             assert!(
                 linux_command(action).is_some() || codex::is_codex_action(action),
                 "missing {action}"
@@ -151,7 +143,12 @@ mod tests {
                 "wrong mapping for {action}"
             );
         }
-        assert_eq!(OMARCHY_ACTION_IDS, expected.map(|(action, _)| action));
+        for (action, _) in expected {
+            assert!(
+                ACTION_IDS.contains(&action),
+                "{action} is outside the Host Contract"
+            );
+        }
     }
 
     #[test]

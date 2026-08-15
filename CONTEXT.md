@@ -20,6 +20,10 @@ Each supported target backend has a desktop host surface; Linux requires a GUI d
 **Target Backend**:
 The desktop-side backend that receives mobile input and applies it to the target desktop environment. Omarchy/Linux and macOS are different target backends.
 
+**Host Adapter**:
+The target-specific implementation through which the single Desktop Host realizes the Host Contract on a Target Backend. Adding a Host Adapter extends platform support without creating another Desktop Host or mobile protocol.
+_Avoid_: Host implementation, when referring to an adapter
+
 **Supported Target Backends**:
 The desktop platforms with a TapPad host surface and backend path today: macOS, Windows, and Linux/Omarchy.
 
@@ -46,6 +50,12 @@ A concrete situation where a first buyer reaches for TapPad, such as vibe coding
 
 **Desktop Action**:
 An intentional action requested by the mobile input surface, such as taking a screenshot, changing workspace, or controlling media playback.
+
+**Host Contract**:
+The stable, platform-neutral interface between a Mobile Input Surface and a Desktop Host Surface. Target backends may implement it differently, but they share the same message meanings, authorization boundary, capability vocabulary, and result semantics.
+
+**Capability Advertisement**:
+A Desktop Host Surface's runtime declaration of which capabilities from the shared Host Contract are supported, unavailable, or intentionally hidden by its current Target Backend. It describes implementation availability without creating a target-specific mobile protocol.
 
 ## Connection and trust
 

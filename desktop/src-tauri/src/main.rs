@@ -8,6 +8,7 @@ mod backend;
 mod backend_controller;
 mod diagnostics;
 mod discovery;
+mod host_contract;
 mod host_surface;
 mod input;
 mod input_chord;

@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
-use crate::input::InputDevice;
-
-use super::{
-    ActionError, ActionFuture, CapabilityStatus, DesktopActionAdapter, capability,
-    run_shell_command,
+use crate::{
+    host_contract::{ACTION_IDS, CapabilityStatus},
+    input::InputDevice,
 };
+
+use super::{ActionError, ActionFuture, DesktopActionAdapter, capability, run_shell_command};
 
 pub(super) struct MacOsActionAdapter;
 
@@ -32,6 +32,7 @@ impl DesktopActionAdapter for MacOsActionAdapter {
             | "screenrecord.screen.audio"
             | "screenrecord.screen.webcam"
             | "screenrecord.stop" => capability("hidden", None),
+            action if action.starts_with("workspace.") => capability("hidden", None),
             _ => capability("supported", None),
         }
     }
@@ -84,8 +85,6 @@ fn macos_command(action: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::ACTION_IDS;
-
     #[test]
     fn close_window_keeps_the_command_w_shortcut() {
         assert_eq!(
