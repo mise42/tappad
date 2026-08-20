@@ -1,10 +1,12 @@
 import { StatusBar } from 'expo-status-bar';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import * as SecureStore from 'expo-secure-store';
 import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
   Keyboard,
   type KeyboardEvent,
+  Modal,
   PanResponder,
   Pressable,
   ScrollView,
@@ -17,6 +19,11 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { createLatestFrameCoalescer } from './frameCoalescer';
+import {
+  authorizationPasswordError,
+  authorizationPasswordKey,
+  authorizationResultNotice,
+} from './authorization';
 import {
   CODEX_VOICE_END_ACTION,
   CODEX_VOICE_MICROPHONE_ACTION,
@@ -59,6 +66,7 @@ import { theme } from './theme';
 type Panel = 'pad' | 'keys' | 'actions' | 'media';
 
 type Props = {
+  hostId: string;
   host: string;
   hostName: string;
   port: number;
@@ -165,7 +173,7 @@ function codexVoiceIcon(action: string): ComponentProps<typeof MaterialCommunity
   }
 }
 
-export function NativeControlSurface({ host, hostName, port, token, onExit }: Props) {
+export function NativeControlSurface({ hostId, host, hostName, port, token, onExit }: Props) {
   const [panel, setPanel] = useState<Panel>('pad');
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -173,6 +181,12 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
   const [capabilityError, setCapabilityError] = useState<string | null>(null);
   const [pointerButtonSupported, setPointerButtonSupported] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [authorizationRequestActive, setAuthorizationRequestActive] = useState(false);
+  const [authorizationPasswordSaved, setAuthorizationPasswordSaved] = useState<boolean | undefined>(undefined);
+  const [authorizationModalOpen, setAuthorizationModalOpen] = useState(false);
+  const [authorizationPassword, setAuthorizationPassword] = useState('');
+  const [authorizationPasswordIssue, setAuthorizationPasswordIssue] = useState<string | null>(null);
+  const [authorizationSubmitting, setAuthorizationSubmitting] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
@@ -230,9 +244,11 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
       const state = await response.json() as HostState;
       if (!mountedRef.current || capabilityRequestRef.current !== request) return;
       setCapabilities(hostStateActionCapabilities(state));
+      setAuthorizationRequestActive(state.authorization?.requestActive === true);
       setCapabilityError(null);
     } catch (cause: unknown) {
       if (!mountedRef.current || capabilityRequestRef.current !== request) return;
+      setAuthorizationRequestActive(false);
       setCapabilityError(cause instanceof Error ? cause.message : 'Action availability could not be loaded.');
     }
   }, [host, port]);
@@ -253,6 +269,12 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
         const message = JSON.parse(String(event.data)) as ServerMessage;
         if (message.type === 'error') {
           setNotice(message.message || 'The host rejected an input message.');
+          return;
+        }
+        if (message.type === 'authorizationResult') {
+          setAuthorizationSubmitting(false);
+          setNotice(authorizationResultNotice(message.status, message.message));
+          void loadCapabilities();
           return;
         }
         if (message.type === 'actionResult' && isCodexVoiceAction(message.action)) {
@@ -278,6 +300,7 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
     };
     socket.onerror = () => {
       if (!mountedRef.current) return;
+      setAuthorizationSubmitting(false);
       setConnectionState('error');
       setConnectionError('Could not reach the desktop host.');
     };
@@ -286,6 +309,7 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
       heldButtonsRef.current.clear();
       heldKeysRef.current.clear();
       setPointerButtonSupported(false);
+      setAuthorizationSubmitting(false);
       setConnectionState('disconnected');
       const delay = Math.min(1_000 * 2 ** reconnectAttemptRef.current, 8_000);
       reconnectAttemptRef.current += 1;
@@ -319,11 +343,80 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
   useEffect(() => { void loadCapabilities(); }, [loadCapabilities]);
 
   useEffect(() => {
-    if (panel !== 'actions') return undefined;
     void loadCapabilities();
-    const timer = setInterval(() => { void loadCapabilities(); }, 1_500);
+    const timer = setInterval(() => { void loadCapabilities(); }, 1_000);
     return () => clearInterval(timer);
-  }, [loadCapabilities, panel]);
+  }, [loadCapabilities]);
+
+  useEffect(() => {
+    let active = true;
+    setAuthorizationPasswordSaved(undefined);
+    void SecureStore.getItemAsync(authorizationPasswordKey(hostId)).then(
+      (password) => { if (active) setAuthorizationPasswordSaved(Boolean(password)); },
+      () => {
+        if (!active) return;
+        setAuthorizationPasswordSaved(false);
+        setNotice('无法读取此 Host 的本机授权密码。');
+      },
+    );
+    return () => { active = false; };
+  }, [hostId]);
+
+  const submitAuthorization = useCallback((password: string) => {
+    if (!send({ type: 'authorize', password })) {
+      setAuthorizationSubmitting(false);
+      setNotice('TapPad 未连接，授权输入未提交。');
+      return false;
+    }
+    setAuthorizationSubmitting(true);
+    setNotice('正在提交…');
+    return true;
+  }, [send]);
+
+  const authorize = useCallback(async () => {
+    if (!authorizationRequestActive || connectionState !== 'connected' || authorizationSubmitting) return;
+    if (authorizationPasswordSaved) {
+      try {
+        const password = await SecureStore.getItemAsync(authorizationPasswordKey(hostId));
+        if (password) {
+          submitAuthorization(password);
+          return;
+        }
+        setAuthorizationPasswordSaved(false);
+      } catch {
+        setNotice('无法读取此 Host 的本机授权密码。');
+        return;
+      }
+    }
+    setAuthorizationPassword('');
+    setAuthorizationPasswordIssue(null);
+    setAuthorizationModalOpen(true);
+  }, [authorizationPasswordSaved, authorizationRequestActive, authorizationSubmitting, connectionState, hostId, submitAuthorization]);
+
+  const saveAndSubmitAuthorization = useCallback(async () => {
+    const issue = authorizationPasswordError(authorizationPassword);
+    if (issue) {
+      setAuthorizationPasswordIssue(issue);
+      return;
+    }
+    if (!authorizationRequestActive) {
+      setAuthorizationPasswordIssue('当前授权请求已结束。');
+      return;
+    }
+    try {
+      await SecureStore.setItemAsync(
+        authorizationPasswordKey(hostId),
+        authorizationPassword,
+        { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY },
+      );
+      setAuthorizationPasswordSaved(true);
+      setAuthorizationModalOpen(false);
+      submitAuthorization(authorizationPassword);
+      setAuthorizationPassword('');
+    } catch {
+      setAuthorizationPasswordIssue('无法把密码保存到此设备的安全存储。');
+    }
+  }, [authorizationPassword, authorizationRequestActive, hostId, submitAuthorization]);
 
   const switchPanel = useCallback((next: Panel) => {
     releaseAll();
@@ -400,6 +493,33 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
         ))}
       </View>
 
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="提交当前 Omarchy 授权请求"
+        accessibilityState={{ disabled: !authorizationRequestActive || connectionState !== 'connected' || authorizationSubmitting || authorizationPasswordSaved === undefined }}
+        disabled={!authorizationRequestActive || connectionState !== 'connected' || authorizationSubmitting || authorizationPasswordSaved === undefined}
+        onPress={() => void authorize()}
+        style={({ pressed }) => [
+          styles.authorizationButton,
+          authorizationRequestActive && connectionState === 'connected' && styles.authorizationButtonActive,
+          pressed && styles.authorizationButtonPressed,
+        ]}
+      >
+        <MaterialCommunityIcons
+          name="shield-key-outline"
+          size={18}
+          color={authorizationRequestActive && connectionState === 'connected' ? theme.color.onPrimary : theme.color.textSubtle}
+        />
+        <Text style={[
+          styles.authorizationButtonText,
+          authorizationRequestActive && connectionState === 'connected' && styles.authorizationButtonTextActive,
+        ]}>授权</Text>
+        <Text style={[
+          styles.authorizationButtonState,
+          authorizationRequestActive && connectionState === 'connected' && styles.authorizationButtonTextActive,
+        ]}>{authorizationSubmitting ? '正在提交' : authorizationRequestActive ? '有待处理请求' : '无当前请求'}</Text>
+      </Pressable>
+
       <View style={styles.panelContainer}>
         {panel === 'pad' ? (
           <PadPanel
@@ -430,6 +550,45 @@ export function NativeControlSurface({ host, hostName, port, token, onExit }: Pr
           <Text style={styles.noticeText}>{notice}</Text>
         </Pressable>
       ) : null}
+
+      <Modal
+        visible={authorizationModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAuthorizationModalOpen(false)}
+      >
+        <View style={styles.modalScrim}>
+          <View style={styles.authorizationDialog}>
+            <Text style={styles.authorizationDialogTitle}>保存此 Host 的授权密码</Text>
+            <Text style={styles.authorizationDialogBody}>密码只保存在这台手机的安全存储中，不同步。首版仅支持 ASCII。</Text>
+            <TextInput
+              value={authorizationPassword}
+              onChangeText={(value) => { setAuthorizationPassword(value); setAuthorizationPasswordIssue(null); }}
+              autoFocus
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="密码"
+              placeholderTextColor={theme.color.textSubtle}
+              onSubmitEditing={() => void saveAndSubmitAuthorization()}
+              style={styles.authorizationPasswordInput}
+            />
+            {authorizationPasswordIssue ? <Text style={styles.authorizationPasswordIssue}>{authorizationPasswordIssue}</Text> : null}
+            <View style={styles.authorizationDialogActions}>
+              <Pressable onPress={() => setAuthorizationModalOpen(false)} style={styles.authorizationCancelButton}>
+                <Text style={styles.authorizationCancelText}>取消</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void saveAndSubmitAuthorization()}
+                disabled={!authorizationRequestActive}
+                style={[styles.authorizationSubmitButton, !authorizationRequestActive && styles.controlDisabled]}
+              >
+                <Text style={styles.authorizationSubmitText}>保存并提交</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -903,6 +1062,12 @@ const styles = StyleSheet.create({
   tabPressed: { backgroundColor: theme.color.surfacePressed },
   tabText: { color: theme.color.textSubtle, fontSize: 12, fontWeight: '700' },
   tabTextActive: { color: theme.color.text },
+  authorizationButton: { minHeight: 46, marginHorizontal: 14, marginTop: 8, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: theme.radius.control, backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
+  authorizationButtonActive: { backgroundColor: theme.color.primary, borderColor: theme.color.primary },
+  authorizationButtonPressed: { opacity: 0.82 },
+  authorizationButtonText: { color: theme.color.textSubtle, fontSize: 13, fontWeight: '800' },
+  authorizationButtonTextActive: { color: theme.color.onPrimary },
+  authorizationButtonState: { marginLeft: 'auto', color: theme.color.textSubtle, fontSize: 11, fontWeight: '700' },
   panelContainer: { flex: 1, marginTop: 7 },
   notice: { marginHorizontal: theme.space.md, marginBottom: theme.space.sm, paddingHorizontal: 13, paddingVertical: 9, borderRadius: theme.radius.panel, backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
   noticeText: { color: theme.color.textMuted, fontSize: 12, lineHeight: 17 },
@@ -964,4 +1129,15 @@ const styles = StyleSheet.create({
   mediaButtonPrimaryPressed: { backgroundColor: theme.color.primaryPressed, borderColor: theme.color.primaryPressed },
   mediaLabel: { color: theme.color.textMuted, fontSize: 10, fontWeight: '700', marginTop: 7, textAlign: 'center' },
   mediaLabelPrimary: { color: theme.color.onPrimary },
+  modalScrim: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0, 0, 0, 0.36)' },
+  authorizationDialog: { width: '100%', maxWidth: 420, padding: 18, borderRadius: theme.radius.panel, backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
+  authorizationDialogTitle: { color: theme.color.text, fontSize: 18, fontWeight: '800' },
+  authorizationDialogBody: { color: theme.color.textMuted, fontSize: 13, lineHeight: 19, marginTop: 8 },
+  authorizationPasswordInput: { height: 44, marginTop: 14, paddingHorizontal: 12, borderRadius: theme.radius.control, borderWidth: 1, borderColor: theme.color.borderStrong, color: theme.color.text, backgroundColor: theme.color.canvas },
+  authorizationPasswordIssue: { color: theme.color.danger, fontSize: 12, marginTop: 8 },
+  authorizationDialogActions: { flexDirection: 'row', gap: 8, marginTop: 16 },
+  authorizationCancelButton: { flex: 1, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
+  authorizationCancelText: { color: theme.color.textStrong, fontSize: 14, fontWeight: '700' },
+  authorizationSubmitButton: { flex: 1, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, backgroundColor: theme.color.primary },
+  authorizationSubmitText: { color: theme.color.onPrimary, fontSize: 14, fontWeight: '700' },
 });

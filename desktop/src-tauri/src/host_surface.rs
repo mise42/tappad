@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 use crate::{
     actions::capability,
+    authorization::AuthorizationState,
     diagnostics::{DiagnosticsSummary, diagnostics_summary},
     host_contract::{CapabilityStatus, HostContract, current_host_contract},
     input::InputCapabilities,
@@ -72,6 +73,7 @@ pub struct HostSurfaceState {
     pub protocol: ProtocolState,
     pub diagnostics: DiagnosticsSummary,
     pub contract: HostContract,
+    pub authorization: AuthorizationState,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -127,6 +129,7 @@ pub fn host_surface_state(
         },
         diagnostics,
         contract,
+        authorization: AuthorizationState::unavailable(),
     }
 }
 
@@ -324,6 +327,7 @@ mod tests {
         assert_eq!(state.contract.version, HOST_CONTRACT_VERSION);
         assert_eq!(state.contract.protocol_version, state.protocol.version);
         assert_eq!(state.contract.action_capabilities, state.actions);
+        assert_eq!(state.authorization, AuthorizationState::unavailable());
         assert_eq!(
             state.contract.input_capabilities,
             state.protocol.input_capabilities

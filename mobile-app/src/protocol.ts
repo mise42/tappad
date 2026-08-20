@@ -6,7 +6,8 @@ export type TapPadMessage =
   | { type: 'key'; code: string; down: boolean }
   | { type: 'text'; value: string }
   | { type: 'paste'; value: string }
-  | { type: 'cmd'; action: string };
+  | { type: 'cmd'; action: string }
+  | { type: 'authorize'; password: string };
 
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -43,6 +44,12 @@ export type HostState = {
     version?: number;
     inputCapabilities?: InputCapabilities;
   };
+  authorization?: AuthorizationState;
+};
+
+export type AuthorizationState = {
+  supported?: boolean;
+  requestActive?: boolean;
 };
 
 export type PointerButton = 'left' | 'right' | 'middle';

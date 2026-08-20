@@ -28,7 +28,7 @@ const CONNECTION_TIMEOUT_MS = 5_000;
 
 type Pairing = { hostId: string; token: string };
 type Pairings = Record<string, Pairing>;
-type ConnectedHost = { host: string; name: string; port: number; token: string };
+type ConnectedHost = { id: string; host: string; name: string; port: number; token: string };
 
 function serviceKey(service: Service) {
   return `${service.name}|${service.type}|${service.domain}`;
@@ -185,6 +185,7 @@ function AppContent() {
       setSelected(null);
       setToken('');
       setConnectedHost({
+        id,
         host: connectionHost(service),
         name: displayName(service),
         port: service.port,
@@ -230,6 +231,7 @@ function AppContent() {
   if (connectedHost) {
     return (
       <NativeControlSurface
+        hostId={connectedHost.id}
         host={connectedHost.host}
         hostName={connectedHost.name}
         port={connectedHost.port}

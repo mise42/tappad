@@ -25,6 +25,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     actions::{DesktopActions, action_capabilities, platform_actions},
+    authorization,
     diagnostics::{record_action_attempt, record_action_failure, record_action_success},
     discovery,
     host_contract::current_host_contract,
@@ -122,14 +123,9 @@ pub async fn bind(settings: &RuntimeSettings) -> io::Result<TcpListener> {
 }
 
 async fn api_host_state(State(state): State<Arc<BackendRuntime>>) -> Json<HostSurfaceState> {
-    Json(host_surface_state(
-        state.settings(),
-        true,
-        None,
-        false,
-        true,
-        None,
-    ))
+    let mut host_state = host_surface_state(state.settings(), true, None, false, true, None);
+    host_state.authorization = authorization::current_state().await;
+    Json(host_state)
 }
 
 async fn ws_handler(
@@ -166,7 +162,8 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<BackendRuntime>, client
         let message: ClientMessage = match serde_json::from_str(&text) {
             Ok(message) => message,
             Err(error) => {
-                warn!("invalid JSON from {client_id}: {error} (raw: {text})");
+                // Messages may contain an authorization password. Never include raw input in logs.
+                warn!("invalid JSON from {client_id}: {error}");
                 send_server_message(
                     &mut socket,
                     ServerMessage::error(
@@ -340,6 +337,33 @@ async fn apply_backend_effect(
                 warn!("text failed: {error}");
                 return Some(input_error("text", error));
             }
+        }
+        BackendEffect::Authorize { password } => {
+            if !authorization::valid_password(&password) {
+                return Some(ServerMessage::authorization_result(
+                    "blocked",
+                    "Authorization passwords must be non-empty ASCII and at most 1024 bytes.",
+                ));
+            }
+            if !authorization::current_state().await.request_active {
+                return Some(ServerMessage::authorization_result(
+                    "blocked",
+                    "No visible Omarchy authorization request is active.",
+                ));
+            }
+
+            let mut input = state.input.lock().await;
+            if let Err(error) = input.type_text(&password).and_then(|()| input.tap("Enter")) {
+                warn!("authorization input failed: {error}");
+                return Some(ServerMessage::authorization_result(
+                    "failed",
+                    format!("Authorization input failed: {error}"),
+                ));
+            }
+            return Some(ServerMessage::authorization_result(
+                "submitted",
+                "Authorization input was submitted to the visible Omarchy request.",
+            ));
         }
         BackendEffect::Paste { value } => {
             let input = state.input.clone();

@@ -20,6 +20,10 @@ test('stable protocol messages keep their existing JSON shapes', () => {
   );
   assert.equal(serializeMessage({ type: 'cmd', action: 'media.play_pause' }), '{"type":"cmd","action":"media.play_pause"}');
   assert.equal(
+    serializeMessage({ type: 'authorize', password: 'ascii only' }),
+    '{"type":"authorize","password":"ascii only"}',
+  );
+  assert.equal(
     serializeMessage({ type: 'pointerButton', button: 'left', down: true }),
     '{"type":"pointerButton","button":"left","down":true}',
   );

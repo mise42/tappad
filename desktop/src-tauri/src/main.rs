@@ -4,6 +4,7 @@
 )]
 
 mod actions;
+mod authorization;
 mod backend;
 mod backend_controller;
 mod diagnostics;

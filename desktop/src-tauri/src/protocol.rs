@@ -31,6 +31,8 @@ pub enum ClientMessage {
     Paste { value: String },
     #[serde(rename = "cmd")]
     Cmd { action: String },
+    #[serde(rename = "authorize")]
+    Authorize { password: String },
 }
 
 fn default_click_count() -> u8 {
@@ -55,6 +57,11 @@ pub enum ServerMessage {
     #[serde(rename = "actionResult")]
     ActionResult {
         action: String,
+        status: &'static str,
+        message: String,
+    },
+    #[serde(rename = "authorizationResult")]
+    AuthorizationResult {
         status: &'static str,
         message: String,
     },
@@ -88,6 +95,13 @@ impl ServerMessage {
     ) -> Self {
         Self::ActionResult {
             action: action.into(),
+            status,
+            message: message.into(),
+        }
+    }
+
+    pub fn authorization_result(status: &'static str, message: impl Into<String>) -> Self {
+        Self::AuthorizationResult {
             status,
             message: message.into(),
         }
@@ -146,5 +160,18 @@ mod tests {
                 "message": "Configured hotkey dispatched."
             })
         );
+    }
+
+    #[test]
+    fn authorization_result_reports_submission_without_claiming_success() {
+        let value = serde_json::to_value(ServerMessage::authorization_result(
+            "submitted",
+            "Authorization input was submitted.",
+        ))
+        .expect("authorization result JSON");
+
+        assert_eq!(value["type"], "authorizationResult");
+        assert_eq!(value["status"], "submitted");
+        assert!(value.get("success").is_none());
     }
 }

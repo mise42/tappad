@@ -235,6 +235,10 @@ impl InputDevice {
     pub fn type_text(&mut self, _text: &str) -> io::Result<()> {
         Ok(())
     }
+
+    pub fn tap(&mut self, _code_name: &str) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]

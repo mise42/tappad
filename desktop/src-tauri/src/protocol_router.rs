@@ -12,6 +12,7 @@ pub enum BackendEffect {
     Text { value: String },
     Paste { value: String },
     Cmd { action: String },
+    Authorize { password: String },
 }
 
 #[derive(Debug)]
@@ -62,6 +63,7 @@ impl ProtocolRouter {
             ClientMessage::Text { value } => BackendEffect::Text { value },
             ClientMessage::Paste { value } => BackendEffect::Paste { value },
             ClientMessage::Cmd { action } => BackendEffect::Cmd { action },
+            ClientMessage::Authorize { password } => BackendEffect::Authorize { password },
         })
     }
 }
@@ -191,6 +193,23 @@ mod tests {
             Some(BackendEffect::PointerButton {
                 button: "left".to_string(),
                 down: true,
+            })
+        );
+    }
+
+    #[test]
+    fn routes_authorization_through_its_dedicated_effect() {
+        let mut router = ProtocolRouter::new();
+
+        assert_eq!(
+            router.route(
+                "client-a",
+                ClientMessage::Authorize {
+                    password: "ascii only".to_string(),
+                },
+            ),
+            Some(BackendEffect::Authorize {
+                password: "ascii only".to_string(),
             })
         );
     }
