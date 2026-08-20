@@ -20,9 +20,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { createLatestFrameCoalescer } from './frameCoalescer';
 import {
+  AUTHORIZATION_RETRY_COOLDOWN_MS,
   authorizationPasswordError,
   authorizationPasswordKey,
+  authorizationRecoveryState,
   authorizationResultNotice,
+  shouldMaskAuthorizationPassword,
 } from './authorization';
 import {
   CODEX_VOICE_END_ACTION,
@@ -186,7 +189,11 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
   const [authorizationModalOpen, setAuthorizationModalOpen] = useState(false);
   const [authorizationPassword, setAuthorizationPassword] = useState('');
   const [authorizationPasswordIssue, setAuthorizationPasswordIssue] = useState<string | null>(null);
+  const [authorizationPasswordVisible, setAuthorizationPasswordVisible] = useState(false);
+  const [authorizationReplacingPassword, setAuthorizationReplacingPassword] = useState(false);
   const [authorizationSubmitting, setAuthorizationSubmitting] = useState(false);
+  const [authorizationSubmittedAt, setAuthorizationSubmittedAt] = useState<number | null>(null);
+  const [authorizationCooldownNow, setAuthorizationCooldownNow] = useState(() => Date.now());
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
@@ -273,6 +280,11 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
         }
         if (message.type === 'authorizationResult') {
           setAuthorizationSubmitting(false);
+          if (message.status === 'submitted') {
+            const submittedAt = Date.now();
+            setAuthorizationSubmittedAt(submittedAt);
+            setAuthorizationCooldownNow(submittedAt);
+          }
           setNotice(authorizationResultNotice(message.status, message.message));
           void loadCapabilities();
           return;
@@ -349,6 +361,21 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
   }, [loadCapabilities]);
 
   useEffect(() => {
+    if (!authorizationRequestActive) setAuthorizationSubmittedAt(null);
+  }, [authorizationRequestActive]);
+
+  useEffect(() => {
+    if (authorizationSubmittedAt === null) return;
+    const remaining = AUTHORIZATION_RETRY_COOLDOWN_MS - (Date.now() - authorizationSubmittedAt);
+    if (remaining <= 0) {
+      setAuthorizationCooldownNow(Date.now());
+      return;
+    }
+    const timer = setTimeout(() => setAuthorizationCooldownNow(Date.now()), remaining);
+    return () => clearTimeout(timer);
+  }, [authorizationSubmittedAt]);
+
+  useEffect(() => {
     let active = true;
     setAuthorizationPasswordSaved(undefined);
     void SecureStore.getItemAsync(authorizationPasswordKey(hostId)).then(
@@ -373,6 +400,30 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
     return true;
   }, [send]);
 
+  const openAuthorizationPasswordModal = useCallback((replacing: boolean) => {
+    setAuthorizationReplacingPassword(replacing);
+    setAuthorizationPassword('');
+    setAuthorizationPasswordIssue(null);
+    setAuthorizationPasswordVisible(false);
+    setAuthorizationModalOpen(true);
+  }, []);
+
+  const closeAuthorizationPasswordModal = useCallback(() => {
+    setAuthorizationModalOpen(false);
+    setAuthorizationPassword('');
+    setAuthorizationPasswordIssue(null);
+    setAuthorizationPasswordVisible(false);
+    setAuthorizationReplacingPassword(false);
+  }, []);
+
+  const authorizationRecovery = authorizationRecoveryState({
+    requestActive: authorizationRequestActive,
+    passwordSaved: authorizationPasswordSaved === true,
+    submittedAt: authorizationSubmittedAt,
+    now: authorizationCooldownNow,
+  });
+  const authorizationCoolingDown = authorizationRecovery === 'cooldown';
+
   const authorize = useCallback(async () => {
     if (!authorizationRequestActive || connectionState !== 'connected' || authorizationSubmitting) return;
     if (authorizationPasswordSaved) {
@@ -388,10 +439,13 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
         return;
       }
     }
-    setAuthorizationPassword('');
-    setAuthorizationPasswordIssue(null);
-    setAuthorizationModalOpen(true);
-  }, [authorizationPasswordSaved, authorizationRequestActive, authorizationSubmitting, connectionState, hostId, submitAuthorization]);
+    openAuthorizationPasswordModal(false);
+  }, [authorizationPasswordSaved, authorizationRequestActive, authorizationSubmitting, connectionState, hostId, openAuthorizationPasswordModal, submitAuthorization]);
+
+  const replaceAuthorizationPassword = useCallback(() => {
+    if (authorizationRecovery !== 'replace') return;
+    openAuthorizationPasswordModal(true);
+  }, [authorizationRecovery, openAuthorizationPasswordModal]);
 
   const saveAndSubmitAuthorization = useCallback(async () => {
     const issue = authorizationPasswordError(authorizationPassword);
@@ -411,6 +465,8 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
       );
       setAuthorizationPasswordSaved(true);
       setAuthorizationModalOpen(false);
+      setAuthorizationReplacingPassword(false);
+      setAuthorizationPasswordVisible(false);
       submitAuthorization(authorizationPassword);
       setAuthorizationPassword('');
     } catch {
@@ -496,8 +552,8 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="提交当前 Omarchy 授权请求"
-        accessibilityState={{ disabled: !authorizationRequestActive || connectionState !== 'connected' || authorizationSubmitting || authorizationPasswordSaved === undefined }}
-        disabled={!authorizationRequestActive || connectionState !== 'connected' || authorizationSubmitting || authorizationPasswordSaved === undefined}
+        accessibilityState={{ disabled: !authorizationRequestActive || connectionState !== 'connected' || authorizationSubmitting || authorizationCoolingDown || authorizationPasswordSaved === undefined }}
+        disabled={!authorizationRequestActive || connectionState !== 'connected' || authorizationSubmitting || authorizationCoolingDown || authorizationPasswordSaved === undefined}
         onPress={() => void authorize()}
         style={({ pressed }) => [
           styles.authorizationButton,
@@ -517,8 +573,23 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
         <Text style={[
           styles.authorizationButtonState,
           authorizationRequestActive && connectionState === 'connected' && styles.authorizationButtonTextActive,
-        ]}>{authorizationSubmitting ? '正在提交' : authorizationRequestActive ? '有待处理请求' : '无当前请求'}</Text>
+        ]}>{authorizationSubmitting ? '正在提交' : authorizationCoolingDown ? '请稍候' : authorizationRequestActive ? '有待处理请求' : '无当前请求'}</Text>
       </Pressable>
+
+      {authorizationRecovery === 'cooldown' ? (
+        <Text style={styles.authorizationRecoveryHint}>已提交；稍后可重新输入密码。</Text>
+      ) : null}
+      {authorizationRecovery === 'replace' ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="重新输入并替换此 Host 的授权密码"
+          onPress={replaceAuthorizationPassword}
+          style={({ pressed }) => [styles.authorizationReplaceButton, pressed && styles.controlPressed]}
+        >
+          <MaterialCommunityIcons name="key-change" size={16} color={theme.color.textStrong} />
+          <Text style={styles.authorizationReplaceText}>重新输入密码</Text>
+        </Pressable>
+      ) : null}
 
       <View style={styles.panelContainer}>
         {panel === 'pad' ? (
@@ -555,27 +626,41 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
         visible={authorizationModalOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setAuthorizationModalOpen(false)}
+        onRequestClose={closeAuthorizationPasswordModal}
       >
         <View style={styles.modalScrim}>
           <View style={styles.authorizationDialog}>
-            <Text style={styles.authorizationDialogTitle}>保存此 Host 的授权密码</Text>
+            <Text style={styles.authorizationDialogTitle}>{authorizationReplacingPassword ? '重新输入此 Host 的授权密码' : '保存此 Host 的授权密码'}</Text>
             <Text style={styles.authorizationDialogBody}>密码只保存在这台手机的安全存储中，不同步。首版仅支持 ASCII。</Text>
-            <TextInput
-              value={authorizationPassword}
-              onChangeText={(value) => { setAuthorizationPassword(value); setAuthorizationPasswordIssue(null); }}
-              autoFocus
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholder="密码"
-              placeholderTextColor={theme.color.textSubtle}
-              onSubmitEditing={() => void saveAndSubmitAuthorization()}
-              style={styles.authorizationPasswordInput}
-            />
+            <View style={styles.authorizationPasswordRow}>
+              <TextInput
+                value={authorizationPassword}
+                onChangeText={(value) => { setAuthorizationPassword(value); setAuthorizationPasswordIssue(null); }}
+                autoFocus
+                secureTextEntry={shouldMaskAuthorizationPassword(authorizationPasswordVisible)}
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder="密码"
+                placeholderTextColor={theme.color.textSubtle}
+                onSubmitEditing={() => void saveAndSubmitAuthorization()}
+                style={styles.authorizationPasswordInput}
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={authorizationPasswordVisible ? '隐藏密码' : '显示密码'}
+                onPress={() => setAuthorizationPasswordVisible((visible) => !visible)}
+                style={({ pressed }) => [styles.authorizationVisibilityButton, pressed && styles.controlPressed]}
+              >
+                <MaterialCommunityIcons
+                  name={authorizationPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+                  size={20}
+                  color={theme.color.textStrong}
+                />
+              </Pressable>
+            </View>
             {authorizationPasswordIssue ? <Text style={styles.authorizationPasswordIssue}>{authorizationPasswordIssue}</Text> : null}
             <View style={styles.authorizationDialogActions}>
-              <Pressable onPress={() => setAuthorizationModalOpen(false)} style={styles.authorizationCancelButton}>
+              <Pressable onPress={closeAuthorizationPasswordModal} style={styles.authorizationCancelButton}>
                 <Text style={styles.authorizationCancelText}>取消</Text>
               </Pressable>
               <Pressable
@@ -583,7 +668,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
                 disabled={!authorizationRequestActive}
                 style={[styles.authorizationSubmitButton, !authorizationRequestActive && styles.controlDisabled]}
               >
-                <Text style={styles.authorizationSubmitText}>保存并提交</Text>
+                <Text style={styles.authorizationSubmitText}>{authorizationReplacingPassword ? '替换并提交' : '保存并提交'}</Text>
               </Pressable>
             </View>
           </View>
@@ -1068,6 +1153,9 @@ const styles = StyleSheet.create({
   authorizationButtonText: { color: theme.color.textSubtle, fontSize: 13, fontWeight: '800' },
   authorizationButtonTextActive: { color: theme.color.onPrimary },
   authorizationButtonState: { marginLeft: 'auto', color: theme.color.textSubtle, fontSize: 11, fontWeight: '700' },
+  authorizationRecoveryHint: { marginHorizontal: 16, marginTop: 5, color: theme.color.textSubtle, fontSize: 11 },
+  authorizationReplaceButton: { minHeight: 40, marginHorizontal: 14, marginTop: 6, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: theme.radius.control, backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.borderStrong },
+  authorizationReplaceText: { color: theme.color.textStrong, fontSize: 12, fontWeight: '700' },
   panelContainer: { flex: 1, marginTop: 7 },
   notice: { marginHorizontal: theme.space.md, marginBottom: theme.space.sm, paddingHorizontal: 13, paddingVertical: 9, borderRadius: theme.radius.panel, backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
   noticeText: { color: theme.color.textMuted, fontSize: 12, lineHeight: 17 },
@@ -1133,7 +1221,9 @@ const styles = StyleSheet.create({
   authorizationDialog: { width: '100%', maxWidth: 420, padding: 18, borderRadius: theme.radius.panel, backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
   authorizationDialogTitle: { color: theme.color.text, fontSize: 18, fontWeight: '800' },
   authorizationDialogBody: { color: theme.color.textMuted, fontSize: 13, lineHeight: 19, marginTop: 8 },
-  authorizationPasswordInput: { height: 44, marginTop: 14, paddingHorizontal: 12, borderRadius: theme.radius.control, borderWidth: 1, borderColor: theme.color.borderStrong, color: theme.color.text, backgroundColor: theme.color.canvas },
+  authorizationPasswordRow: { height: 44, marginTop: 14, flexDirection: 'row', alignItems: 'center', borderRadius: theme.radius.control, borderWidth: 1, borderColor: theme.color.borderStrong, backgroundColor: theme.color.canvas },
+  authorizationPasswordInput: { flex: 1, height: 42, paddingLeft: 12, paddingRight: 4, color: theme.color.text },
+  authorizationVisibilityButton: { width: 44, height: 42, alignItems: 'center', justifyContent: 'center' },
   authorizationPasswordIssue: { color: theme.color.danger, fontSize: 12, marginTop: 8 },
   authorizationDialogActions: { flexDirection: 'row', gap: 8, marginTop: 16 },
   authorizationCancelButton: { flex: 1, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },

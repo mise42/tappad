@@ -25,7 +25,32 @@ use host_surface::HostSurfaceState;
 use log::warn;
 use settings::SettingsUpdate;
 use tauri::{AppHandle, Manager, State};
-use tauri_plugin_log::{Target, TargetKind};
+use tauri_plugin_log::{Builder as LogBuilder, Target, TargetKind};
+
+const HOST_LOG_LEVEL: log::LevelFilter = log::LevelFilter::Info;
+const RAW_PAYLOAD_LOG_TARGETS: [&str; 2] = ["tungstenite", "tokio_tungstenite"];
+
+fn host_log_level_for(target: &str) -> log::LevelFilter {
+    if RAW_PAYLOAD_LOG_TARGETS
+        .iter()
+        .any(|prefix| target == *prefix || target.starts_with(&format!("{prefix}::")))
+    {
+        log::LevelFilter::Off
+    } else {
+        HOST_LOG_LEVEL
+    }
+}
+
+fn host_log_builder() -> LogBuilder {
+    RAW_PAYLOAD_LOG_TARGETS.iter().fold(
+        LogBuilder::new()
+            .level(HOST_LOG_LEVEL)
+            .clear_targets()
+            .target(Target::new(TargetKind::Stdout))
+            .target(Target::new(TargetKind::LogDir { file_name: None })),
+        |builder, target| builder.level_for(*target, host_log_level_for(target)),
+    )
+}
 
 #[tauri::command]
 async fn host_state(
@@ -75,12 +100,7 @@ async fn reset_pairing_token(
 
 fn main() {
     tauri::Builder::default()
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .target(Target::new(TargetKind::Stdout))
-                .target(Target::new(TargetKind::LogDir { file_name: None }))
-                .build(),
-        )
+        .plugin(host_log_builder().build())
         .plugin(
             tauri_plugin_autostart::Builder::new()
                 .app_name("TapPad")
@@ -110,4 +130,23 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("failed to run TapPad desktop host");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn websocket_payload_log_targets_are_disabled() {
+        assert_eq!(HOST_LOG_LEVEL, log::LevelFilter::Info);
+        assert_eq!(host_log_level_for("tungstenite"), log::LevelFilter::Off);
+        assert_eq!(
+            host_log_level_for("tokio_tungstenite"),
+            log::LevelFilter::Off
+        );
+        assert_eq!(
+            host_log_level_for("tungstenite::protocol::frame"),
+            log::LevelFilter::Off
+        );
+    }
 }
