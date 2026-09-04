@@ -36,6 +36,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Install Linux input build dependencies
+        run: sudo apt-get update && sudo apt-get install --yes libxkbcommon-dev
+
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
 
