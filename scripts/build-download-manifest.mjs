@@ -16,19 +16,9 @@ if (!baseUrl) {
 
 const platformRules = [
   {
-    platform: "macos",
-    label: "macOS",
-    extensions: [".dmg"],
-  },
-  {
-    platform: "windows",
-    label: "Windows",
-    extensions: [".msi", ".exe"],
-  },
-  {
     platform: "linux",
-    label: "Linux",
-    extensions: [".AppImage", ".deb", ".rpm"],
+    label: "Omarchy",
+    extensions: [".tar.gz"],
   },
 ];
 

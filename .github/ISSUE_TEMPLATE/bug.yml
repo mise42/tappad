@@ -1,0 +1,61 @@
+name: Bug report
+description: Report behavior that is broken or unsafe
+title: "[Bug]: "
+labels:
+  - bug
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve TapPad. Do not include pairing credentials, typed text, clipboard contents, or other private data. Report security vulnerabilities through SECURITY.md instead.
+  - type: input
+    id: omarchy-version
+    attributes:
+      label: Omarchy version
+      placeholder: Output of omarchy version
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: TapPad version or commit
+      placeholder: v0.1.0 or commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: scenario
+    attributes:
+      label: What were you trying to do?
+      description: Describe the concrete Use Scenario.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Start the TapPad Host...
+        2. Connect from...
+        3. Send...
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Observed and expected result
+      description: Separate what happened from what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include phone or tablet OS, connection method, and relevant hardware. Remove personal data.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Optional. Remove tokens, local addresses if sensitive, typed text, and clipboard contents.

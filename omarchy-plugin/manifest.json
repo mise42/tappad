@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "io.miselabs.tappad",
+  "name": "TapPad",
+  "version": "0.1.0",
+  "author": "TapPad contributors",
+  "description": "Pair a phone and control the Omarchy TapPad Host",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "TapPad",
+    "description": "TapPad Host status and phone pairing",
+    "category": "System",
+    "defaultSection": "right",
+    "allowMultiple": false
+  }
+}

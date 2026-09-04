@@ -6,7 +6,7 @@ Issues live in Linear under the Product team and TapPad project. See `docs/agent
 
 ### Triage labels
 
-Commercial-product triage vocabulary for intake, execution, and roadmap decisions. See `docs/agents/triage-labels.md`.
+Open-source product triage vocabulary for intake, execution, and roadmap decisions. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR 0004](0004-adopt-omarchy-first-open-source-posture.md)
 
 ## Context
 

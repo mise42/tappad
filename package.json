@@ -1,6 +1,9 @@
 {
   "name": "tappad",
   "version": "0.1.0",
+  "description": "Open-source, Omarchy-native mobile input surface for phones and tablets",
+  "license": "MIT",
+  "repository": "github:miselabs/tappad",
   "private": true,
   "packageManager": "pnpm@11.21.0",
   "scripts": {

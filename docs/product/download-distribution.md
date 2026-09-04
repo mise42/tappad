@@ -1,62 +1,43 @@
-# Download Distribution
+# Download distribution
 
-TapPad beta downloads use a gated static-site flow:
+TapPad publishes one maintained download for current Omarchy:
 
-1. The Landing page shows macOS, Windows, and Linux download buttons.
-2. The visitor clicks a platform download, then enters an email and expected use case in a dialog.
-3. Cloudflare Pages Function `POST /api/beta-access` validates the submission and selected platform.
-4. The function stores the beta access request as JSON in R2.
-5. The function reads `latest/downloads.json` from R2 and returns the matching TapPad download link.
-6. The Landing page starts that download automatically after the form submission succeeds.
+1. The project site shows one Omarchy download button.
+2. Cloudflare Pages Function `GET /api/downloads` reads
+   `latest/downloads.json` from R2.
+3. The site starts the Omarchy download directly.
 
-## Cloudflare Pages Setup
+No account, email address, use-case submission, or license key is required.
 
-Deploy the Landing site as a Cloudflare Pages project with `landing/` as the project root.
+## Target artifact
 
-Current production deployment:
+The Omarchy release contains:
 
-- Pages project: `tappad`
-- Public site: `https://tappad.mise42.top`
-- Pages fallback domain: `https://tappad.pages.dev`
-- R2 bucket: `tappad-downloads`
-- Current public R2 download origin: `https://pub-f5c49124efb14d8a80d107934b3f79c3.r2.dev`
+- the headless `tappad-host` binary;
+- a systemd user service;
+- the Omarchy Quickshell TapPad Shell Surface;
+- the browser Mobile Input Surface assets;
+- reversible install, update, and removal commands.
 
-Configure these bindings for the Pages Function:
+macOS and Windows artifacts are no longer published.
+
+## Cloudflare Pages setup
+
+Deploy `landing/` as the Pages project root and bind only:
 
 | Binding name | Type | Purpose |
 | --- | --- | --- |
-| `TAPPAD_DOWNLOADS_BUCKET` | R2 bucket | Reads `latest/downloads.json` for current download links. |
-| `TAPPAD_LEADS_BUCKET` | R2 bucket | Stores beta access requests under `beta-access/YYYY-MM-DD/`. |
+| `TAPPAD_DOWNLOADS_BUCKET` | R2 bucket | Reads `latest/downloads.json` for the public Omarchy download. |
 
-`TAPPAD_DOWNLOADS_BUCKET` and `TAPPAD_LEADS_BUCKET` can point at the same R2 bucket if we want one operational surface.
+The previous beta-access lead capture is intentionally removed. Do not restore
+a mandatory form or write visitor details to the downloads bucket.
 
-## GitHub Actions Setup
+## Release acceptance
 
-The main packaging workflow still publishes GitHub prereleases. When Cloudflare settings are present, it also syncs the release files to R2:
+A release is ready after:
 
-| Name | GitHub type | Purpose |
-| --- | --- | --- |
-| `CLOUDFLARE_ACCOUNT_ID` | Secret | Cloudflare account for Wrangler. |
-| `CLOUDFLARE_API_TOKEN` | Secret | API token allowed to write R2 objects. |
-| `TAPPAD_R2_BUCKET` | Variable | R2 bucket name, for example `tappad-downloads`. |
-| `TAPPAD_DOWNLOAD_BASE_URL` | Variable | Public download origin, for example `https://downloads.tappad.app`. |
-
-The workflow writes each build to:
-
-- `releases/<release-tag>/<file>`
-- `latest/<file>`
-- `latest/downloads.json`
-
-The macOS beta download points to the Tauri `.dmg`. The native macOS `.zip` is not an active release artifact; the existing AppKit implementation is retained only as reference code unless a future cleanup removes it.
-
-Manual workflow runs support two paths:
-
-```bash
-# Build packages, publish a new GitHub pre-release, and sync it to R2.
-gh workflow run build-desktop-host.yml --ref main
-
-# Sync an existing GitHub release to R2 without rebuilding packages.
-gh workflow run build-desktop-host.yml --ref main -f release_tag=main-20260620T104052Z-2cea3f5
-```
-
-The Landing page only receives the final download link after the visitor submits the dialog, so public download URL shape can change without editing the static HTML.
+- automated Host and browser protocol checks pass;
+- `omarchy plugin validate` accepts the Shell Surface;
+- install, first launch, pairing, core input, Desktop Actions, restart, update,
+  and removal pass on current Omarchy;
+- release notes identify the tested Omarchy version and commit.

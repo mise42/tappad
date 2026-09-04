@@ -1,77 +1,79 @@
 # TapPad
 
-TapPad is a browser-based Mobile Input Surface. It turns a phone or tablet into
-a pointer, keyboard, paste bridge, and Desktop Action pad for a nearby desktop.
+TapPad is an open-source, **Omarchy-native Mobile Input Surface**. It turns a
+phone or tablet into a local trackpad, keyboard, text-transfer surface, and
+Desktop Action pad for an Omarchy computer.
 
-The shared mobile web UI lives in `mobile/`.
+TapPad is an independent community project. It is not affiliated with or
+endorsed by Omarchy or the Omacom Foundation.
 
-## Legacy native macOS reference
+## What it does
 
-The previous native AppKit Desktop Host is retained as reference code. It is not
-an active product or release path; macOS uses the Tauri Desktop Host below.
+- Pointer movement, click, drag, and scroll from a touch screen
+- Keyboard shortcuts and text transfer
+- Local-network access with persistent Device Authorization
+- Omarchy actions for workspaces, screenshots, screen recording, media, window
+  control, Walker, and lock
+- A browser-based Mobile Input Surface served directly by the Omarchy Host
+
+Input stays between the phone or tablet and the Omarchy machine on the local
+network. TapPad is not a remote desktop or cloud relay.
+
+## Omarchy architecture
+
+TapPad has two runtime modules:
+
+1. **TapPad Host** — a small headless Rust process that owns input injection,
+   the LAN WebSocket, Device Authorization, mDNS, settings, and named Desktop
+   Actions.
+2. **TapPad Shell Surface** — an Omarchy Quickshell plugin that owns status,
+   readiness, pairing, and lifecycle controls.
+
+The Host Contract remains the interface between the browser Mobile Input
+Surface and the TapPad Host. Quickshell replaces the former desktop window and
+tray; it does not absorb the network server or input backend into the
+long-running Omarchy Shell process.
+
+## Repository layout
+
+The Rust Host lives in `host/`; the Quickshell plugin lives in
+`omarchy-plugin/`; the phone UI lives in `mobile/`. The previous Tauri, native
+macOS, Windows, and Expo shells have been removed from the maintained source.
+
+The only supported release target is current Omarchy.
+
+## Install on Omarchy
+
+Download and extract the Omarchy release, then run:
 
 ```bash
-cd ~/Work/personal/tappad/macos
-./scripts/build_app.sh
-open .dist/TapPad.app
+./install.sh
 ```
 
-The packaging script can still create `.dist/TapPad-mac.zip` for local
-inspection, but that archive is not part of the active public download flow.
+This installs the headless Host as a systemd user service and enables the
+TapPad Quickshell widget. Run `./uninstall.sh` from the extracted release to
+remove the service, binary, and plugin; pairing settings are intentionally kept.
 
-To run the legacy implementation for reference or debugging:
+## Development
+
+Current checks:
 
 ```bash
-cd ~/Work/personal/tappad/macos
-swift run TapPad
+pnpm test
+cargo test --manifest-path host/Cargo.toml
+omarchy plugin validate ./omarchy-plugin
 ```
 
-## Tauri Desktop Host
+See [CONTRIBUTING.md](CONTRIBUTING.md) before proposing behavior or protocol
+changes. Security issues should follow [SECURITY.md](SECURITY.md).
 
-Linux, macOS, and Windows share one active Tauri Desktop Host Surface and one
-Rust backend. A narrow macOS-specific adapter may be added later if a verified
-system-integration limitation requires it.
+## Community direction
 
-```bash
-cd ~/Work/personal/tappad/desktop
-pnpm install
-pnpm run dev
-```
+TapPad is maintained as a community contribution, not as a paid product. The
+project tests and documents one supported environment: current Omarchy. New
+work should simplify that path instead of preserving speculative portability.
 
-The Tauri app owns the backend lifecycle, pairing token, local settings,
-launch-at-login preference, and the Desktop Host Surface. Settings are stored in
-the Tauri app local data directory. Saving the port or token hot-restarts the
-backend only after the new listener binds successfully.
+## License
 
-The local backend serves:
-
-- Mobile Input Surface: `http://<host>:<port>/?token=<pairing-token>`
-- Sanitized host state: `http://<host>:<port>/api/host-state`
-- Token-gated WebSocket: `ws://<host>:<port>/ws?token=<pairing-token>`
-
-The WebSocket protocol is additive and versioned through the Host's `ready`
-message and `/api/host-state`. Protocol v2 advertises target-backend input
-capabilities and adds `pointerButton` down/up messages for held pointer input.
-Clients must gate new input messages on the advertised capability; older Hosts
-continue to accept the existing move, wheel, atomic click, key, text, paste, and
-desktop action messages. Rejected messages and unknown desktop action IDs return
-an explicit WebSocket `error` response.
-
-## Controls
-
-- One finger move: pointer movement
-- Single tap: left click
-- Double tap: normal double click
-- Long press: right click
-- Two finger drag: scroll
-- Text box: text transfer
-- Shortcut buttons: Cmd/Super, Esc, Tab, Enter, Backspace, arrows, and common modifiers
-
-## Desktop Actions
-
-The mobile protocol accepts named Desktop Action ids through `cmd` messages.
-Arbitrary shell-command messages are not part of the product protocol.
-
-Linux/Omarchy actions include screenshot, screen recording, media controls,
-window close, launcher, and lock. Windows exposes the same action
-ids with explicit downgraded states where native capture work has not shipped.
+TapPad is released under the [MIT License](LICENSE). Third-party notices are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
