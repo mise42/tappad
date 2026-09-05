@@ -537,3 +537,13 @@ body[data-text-entry="active"] textarea {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.host-controls { grid-column: 1 / -1; }
+.authorization { padding: 8px 0; }
+.authorization p { margin: 6px 0 0; font-size: 13px; }
+[hidden] { display: none !important; }
+#authorizationDialog { box-sizing: border-box; width: min(92vw, 420px); max-height: 85dvh; overflow: auto; color: #eee; background: #191d24; border: 1px solid #555; border-radius: 16px; padding: 20px; }
+#authorizationDialog::backdrop { background: #0009; }
+#authorizationDialog input { box-sizing: border-box; display: block; width: 100%; margin: 12px 0; min-height: 44px; font-size: 16px; }
+#authorizationDialog button, .authorization button { min-height: 44px; }
+#authorizationError { color: #ffb4b4; }

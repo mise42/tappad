@@ -371,75 +371,6 @@ h3 {
   margin: 22px 0 0;
 }
 
-.beta-access-form {
-  display: grid;
-  gap: 14px;
-}
-
-.beta-access-form label {
-  display: grid;
-  gap: 7px;
-  color: rgba(23, 22, 20, 0.78);
-  font-size: 13px;
-  font-weight: 720;
-}
-
-.beta-access-form input,
-.beta-access-form textarea {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--ink);
-  background: rgba(255, 250, 240, 0.72);
-  font: inherit;
-  font-size: 15px;
-  font-weight: 560;
-  line-height: 1.4;
-  outline: none;
-  transition: border-color 160ms ease, background 160ms ease;
-}
-
-.beta-access-form input {
-  min-height: 48px;
-  padding: 0 14px;
-}
-
-.beta-access-form textarea {
-  min-height: 120px;
-  padding: 12px 14px;
-  resize: vertical;
-}
-
-.beta-access-form input:focus,
-.beta-access-form textarea:focus {
-  border-color: rgba(21, 58, 138, 0.5);
-  background: #fffaf0;
-}
-
-.beta-access-form .primary-action {
-  width: 100%;
-  border: 0;
-  cursor: pointer;
-}
-
-.beta-access-form .primary-action:disabled {
-  cursor: wait;
-  opacity: 0.72;
-  transform: none;
-}
-
-.form-status {
-  min-height: 22px;
-  margin: 0;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.45;
-}
-
-.form-status.error {
-  color: #9f1d1d;
-}
-
 .platform-downloads {
   display: grid;
   gap: 10px;
@@ -474,6 +405,12 @@ h3 {
   border-color: rgba(23, 22, 20, 0.28);
   background: #fffaf0;
   transform: translateY(-1px);
+}
+
+.platform-downloads button:disabled {
+  cursor: wait;
+  opacity: 0.64;
+  transform: none;
 }
 
 .platform-downloads button.detected {
@@ -517,57 +454,24 @@ h3 {
   display: none;
 }
 
-.download-dialog {
-  width: min(92vw, 460px);
-  padding: 0;
-  border: 1px solid rgba(23, 22, 20, 0.16);
-  border-radius: 10px;
-  background: var(--paper);
-  color: var(--ink);
-  box-shadow: 0 34px 90px rgba(23, 22, 20, 0.26);
-}
-
-.download-dialog::backdrop {
-  background: rgba(23, 22, 20, 0.36);
-  backdrop-filter: blur(8px);
-}
-
-.download-dialog .beta-access-form {
-  padding: 28px;
-}
-
-.dialog-heading .kicker {
-  margin-bottom: 10px;
-}
-
-.dialog-heading h2 {
-  margin-bottom: 12px;
-  font-size: 34px;
-  line-height: 1.02;
-}
-
-.dialog-heading p {
-  margin-bottom: 10px;
+.download-status {
+  min-height: 22px;
+  margin: 4px 0 0;
   color: var(--muted);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.45;
 }
 
-.dialog-actions {
-  display: grid;
-  grid-template-columns: 0.72fr 1fr;
-  gap: 10px;
+.download-status.error {
+  color: #9f1d1d;
 }
 
-.dialog-actions .primary-action,
-.dialog-actions .secondary-action {
-  width: 100%;
-  border: 0;
-  cursor: pointer;
-}
-
-.dialog-actions .secondary-action {
-  border: 1px solid var(--line);
+.source-link {
+  width: fit-content;
+  border-bottom: 1px solid currentColor;
+  color: var(--accent-dark);
+  font-size: 14px;
+  font-weight: 700;
 }
 
 @keyframes rise-in {
@@ -725,18 +629,6 @@ h3 {
 
   .download {
     gap: 28px;
-  }
-
-  .download-dialog .beta-access-form {
-    padding: 22px;
-  }
-
-  .dialog-heading h2 {
-    font-size: 28px;
-  }
-
-  .dialog-actions {
-    grid-template-columns: 1fr;
   }
 
   .workspace-visual {

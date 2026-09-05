@@ -1,6 +1,7 @@
 /target
 **/target
 **/node_modules
+mobile-app/
 **/src-tauri/gen/schemas/linux-schema.json
 /.build
 **/.build

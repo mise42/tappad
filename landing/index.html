@@ -4,11 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f7f2e8" />
-    <title>TapPad - Mobile Input Surface for Desktop</title>
+    <title>TapPad - An Omarchy-native Mobile Input Surface</title>
     <meta
       name="description"
-      content="Install TapPad on the desktop you want to control, then scan from any phone or tablet. No mobile app download is required."
+      content="Open-source, Omarchy-native local trackpad, keyboard, text surface, and action pad for your phone or tablet."
     />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css?v=download-button-1" />
   </head>
   <body>
@@ -16,7 +17,8 @@
       <a class="brand" href="#top" aria-label="TapPad home">TapPad</a>
       <nav aria-label="Primary navigation">
         <a href="#scenarios">Scenarios</a>
-        <a href="mailto:hello@tappad.app?subject=TapPad%20beta%20feedback">Feedback</a>
+        <a href="https://github.com/miselabs/tappad">GitHub</a>
+        <a href="https://github.com/miselabs/tappad/issues">Feedback</a>
         <a class="nav-cta" href="#download">Download</a>
       </nav>
     </header>
@@ -24,14 +26,14 @@
     <main id="top">
       <section class="hero" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <p class="kicker">Your phone becomes the control surface</p>
-          <h1 id="hero-title">Control your desktop from your phone.</h1>
+          <p class="kicker">Open source · Local first · Omarchy native</p>
+          <h1 id="hero-title">Your phone is an input surface for Omarchy.</h1>
           <p class="hero-text">
-            Use the screen already in your hand as a trackpad, keyboard, text pad, and command deck for the computer nearby.
+            Use the screen already in your hand as a trackpad, keyboard, text pad, and action deck for your nearby Omarchy computer.
           </p>
           <div class="hero-actions">
             <a class="primary-action" href="#download">Download TapPad</a>
-            <a class="secondary-action" href="#scenarios">See use cases</a>
+            <a class="secondary-action" href="https://github.com/miselabs/tappad">View source</a>
           </div>
         </div>
 
@@ -78,8 +80,8 @@
 
       <section class="platforms" aria-labelledby="platform-title">
         <div>
-          <p class="kicker">One desktop install. Any phone or tablet.</p>
-          <h2 id="platform-title">Install TapPad on the computer you want to control. Open it from any phone.</h2>
+          <p class="kicker">Part of your Omarchy desktop</p>
+          <h2 id="platform-title">A native Omarchy Shell surface with a small local Host.</h2>
         </div>
         <div>
           <div class="platform-badges" aria-label="TapPad connection and mobile compatibility">
@@ -106,7 +108,7 @@
             </span>
           </div>
           <p>
-            Install TapPad on the macOS, Windows, or Linux computer you want to control. Any phone or tablet can join through the local QR link.
+            TapPad uses an Omarchy Quickshell surface for status and pairing while a small Rust Host handles local input safely. Any phone or tablet joins through the browser QR link.
           </p>
           <ol class="setup-flow platform-flow" aria-label="TapPad setup flow">
             <li>Install TapPad</li>
@@ -118,65 +120,25 @@
 
       <section id="download" class="download" aria-labelledby="download-title">
         <div>
-          <p class="kicker">Three-platform beta</p>
-          <h2 id="download-title">Download TapPad for the computer you want to control.</h2>
+          <p class="kicker">Free and open source</p>
+          <h2 id="download-title">Install TapPad on Omarchy.</h2>
           <p>
-            Choose the app for your Mac, Windows PC, or Linux PC. We will ask for an email and quick use case before the download starts.
+            Download directly with no account, license key, or email gate. TapPad is released under the MIT License.
           </p>
         </div>
 
         <div class="platform-downloads" aria-label="TapPad downloads">
-          <p class="download-detected-copy" data-detected-copy>Choose the version for the computer you want to control.</p>
-          <button type="button" data-download-trigger data-platform="macos">
-            <span class="download-button-label">
-              <strong>Download for Mac</strong>
-              <em data-platform-note></em>
-            </span>
-          </button>
-          <button type="button" data-download-trigger data-platform="windows">
-            <span class="download-button-label">
-              <strong>Download for Windows PC</strong>
-              <em data-platform-note></em>
-            </span>
-          </button>
+          <p class="download-detected-copy">Current Omarchy is the maintained release target.</p>
           <button type="button" data-download-trigger data-platform="linux">
             <span class="download-button-label">
-              <strong>Download for Linux PC</strong>
-              <em data-platform-note></em>
+              <strong>Download for Omarchy</strong>
             </span>
           </button>
+          <p class="download-status" data-download-status role="status" aria-live="polite"></p>
+          <a class="source-link" href="https://github.com/miselabs/tappad/releases">Browse every release on GitHub</a>
         </div>
       </section>
     </main>
-
-    <dialog class="download-dialog" data-download-dialog aria-labelledby="download-dialog-title">
-      <form class="beta-access-form" method="dialog" data-beta-access-form>
-        <div class="dialog-heading">
-          <p class="kicker">Beta download</p>
-          <h2 id="download-dialog-title">Download TapPad</h2>
-          <p>Tell us where TapPad fits. After this, your download will start automatically.</p>
-        </div>
-        <label>
-          <span>Email</span>
-          <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
-        </label>
-        <label>
-          <span>What do you want to use TapPad for?</span>
-          <textarea
-            name="useCase"
-            rows="4"
-            minlength="8"
-            placeholder="Control my computer from the sofa, type from my phone..."
-            required
-          ></textarea>
-        </label>
-        <div class="dialog-actions">
-          <button class="secondary-action" type="button" data-dialog-close>Cancel</button>
-          <button class="primary-action" type="submit" data-download-confirm>Continue to download</button>
-        </div>
-        <p class="form-status" data-beta-access-status role="status" aria-live="polite"></p>
-      </form>
-    </dialog>
 
     <script src="./script.js?v=download-button-1"></script>
   </body>

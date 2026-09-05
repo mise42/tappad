@@ -14,7 +14,7 @@ The practical distinction is:
 
 For TapPad, the preferred browser-first design is therefore:
 
-1. Let the Tauri Desktop Host start at login, remain in the background, and publish a collision-resistant `tappad-<host-id>.local` alias plus `_tappad._tcp.local` while the backend is available.
+1. Let the headless TapPad Host start as a systemd user service, remain in the background, and publish a collision-resistant `tappad-<host-id>.local` alias plus `_tappad._tcp.local` while the backend is available.
 2. Let browser users navigate directly to the known host-specific address; let the TapPad Mobile App enumerate `_tappad._tcp.local` and resolve its SRV target.
 3. Require one-time device authorization and persist a device credential independently of the transient browser/WebSocket connection.
 4. On later visits, reconnect automatically while the credential remains valid.
@@ -73,7 +73,7 @@ Mobile pages may also be frozen or discarded in the background. A WebSocket is a
 
 ## Recommendation for TapPad
 
-Use `tappad-<host-id>.local:8765` as the direct browser launch surface and `_tappad._tcp.local` as the TapPad Mobile App discovery surface. The Tauri Desktop Host should own launch-at-login, backend lifecycle, and mDNS/DNS-SD publication; it does not need a separate systemd service. The service instance carries the user-friendly TapPad host label, while its SRV record targets the stable TapPad alias rather than claiming the operating system's hostname.
+Use `tappad-<host-id>.local:8765` as the direct browser launch surface and `_tappad._tcp.local` as the browser-client discovery surface. The headless TapPad Host owns backend lifecycle and mDNS/DNS-SD publication under a systemd user service. The service instance carries the user-friendly TapPad host label, while its SRV record targets the stable TapPad alias rather than claiming the operating system's hostname.
 
 Keep addressing and trust separate. On first connection, require a short PIN, desktop confirmation, or equivalent one-time approval, then issue a persistent device credential. Persist the stable host id and approved credential separately from WebSocket state so a dropped connection or later page visit can reconnect without repeating authorization.
 

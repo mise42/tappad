@@ -19,9 +19,9 @@ Use GitHub tools or the authenticated `gh` CLI. Linear is no longer the source o
 - **Close / defer**: close the GitHub issue or update its labels/milestone and leave a short comment explaining the product decision.
 - **Avoid duplicates**: search open and closed issues by feature, symptom, and affected module before creating a new issue.
 
-## Commercial product posture
+## Open-source product posture
 
-Treat GitHub Issues as the source of truth for product work, not just code tasks. Issues may represent product discovery, website work, activation backend work, packaging, pricing, customer onboarding, and implementation.
+Treat GitHub Issues as the source of truth for product work, not just code tasks. Issues may represent community use scenarios, Omarchy integration, website work, packaging, contributor experience, security, and implementation.
 
 ## When a skill says "publish to the issue tracker"
 

@@ -1,0 +1,30 @@
+[package]
+name = "tappad-host"
+version = "0.1.0"
+edition = "2024"
+description = "Headless TapPad Host for Omarchy"
+license = "MIT"
+repository = "https://github.com/miselabs/tappad"
+
+[dependencies]
+axum = { version = "0.8", features = ["ws"] }
+base64 = "0.22"
+env_logger = "0.11"
+futures = "0.3"
+getrandom = "0.2"
+hostname = "0.4"
+include_dir = "0.7"
+local-ip-address = "0.6"
+log = "0.4"
+mdns-sd = "0.20.3"
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+enigo = { version = "0.6", default-features = false, features = ["x11rb", "wayland"] }
+
+[dev-dependencies]
+tempfile = "3"

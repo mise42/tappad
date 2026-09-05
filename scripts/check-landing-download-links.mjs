@@ -1,74 +1,53 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
 
 const repoRoot = process.cwd();
-const landingPath = path.join(repoRoot, "landing", "index.html");
-const html = readFileSync(landingPath, "utf8");
-const anchorPattern = /<a\b[^>]*>/g;
+const landingRoot = path.join(repoRoot, "landing");
+const html = readFileSync(path.join(landingRoot, "index.html"), "utf8");
+const script = readFileSync(path.join(landingRoot, "script.js"), "utf8");
+const wrangler = readFileSync(path.join(landingRoot, "wrangler.toml"), "utf8");
 const failures = [];
 
-for (const match of html.matchAll(anchorPattern)) {
-  const anchor = match[0];
+const linuxMatches = html.match(/data-platform=["']linux["']/g) || [];
+if (linuxMatches.length !== 1) {
+  failures.push(`expected one Omarchy download trigger, found ${linuxMatches.length}`);
+}
 
-  if (!/(?:\s|<)download(?:\s|>|=)/.test(anchor)) {
-    continue;
+for (const unsupported of ["macos", "windows"]) {
+  if (new RegExp(`data-platform=["']${unsupported}["']`).test(html)) {
+    failures.push(`landing still exposes the unsupported ${unsupported} download`);
   }
+}
 
-  const hrefMatch = anchor.match(/\bhref="([^"]+)"/);
-  if (!hrefMatch) {
-    failures.push(`download anchor is missing href: ${anchor}`);
-    continue;
-  }
+if (!script.includes('fetch("/api/downloads"')) {
+  failures.push("landing script does not load the public /api/downloads endpoint");
+}
 
-  const href = hrefMatch[1];
+if (!existsSync(path.join(landingRoot, "functions", "api", "downloads.js"))) {
+  failures.push("public downloads function is missing");
+}
 
-  if (/^(https?:)?\/\//.test(href) || href.startsWith("mailto:")) {
-    continue;
-  }
+if (existsSync(path.join(landingRoot, "functions", "api", "beta-access.js"))) {
+  failures.push("legacy beta-access function still exists");
+}
 
-  const resolvedPath = path.resolve(path.dirname(landingPath), href);
-
-  if (!resolvedPath.startsWith(repoRoot + path.sep)) {
-    failures.push(`download href escapes repo root: ${href}`);
-    continue;
-  }
-
-  if (!existsSync(resolvedPath)) {
-    failures.push(`download href points to a missing file: ${href}`);
-    continue;
-  }
-
-  const ignored = spawnSync("git", ["check-ignore", "-q", path.relative(repoRoot, resolvedPath)], {
-    cwd: repoRoot,
-    stdio: "ignore",
-  });
-  if (ignored.status === 0) {
-    failures.push(`download href points to an ignored file: ${href}`);
-  } else if (ignored.status !== 1) {
-    throw new Error(`git check-ignore failed for ${href}`);
-  }
-
-  const tracked = spawnSync("git", ["ls-files", "--error-unmatch", path.relative(repoRoot, resolvedPath)], {
-    cwd: repoRoot,
-    stdio: "ignore",
-  });
-  if (tracked.status === 1) {
-    failures.push(`download href points to an untracked file: ${href}`);
-    continue;
-  }
-  if (tracked.status !== 0) {
-    throw new Error(`git ls-files failed for ${href}`);
+for (const [name, content] of [
+  ["landing HTML", html],
+  ["landing script", script],
+  ["Wrangler configuration", wrangler],
+]) {
+  if (/beta-access|TAPPAD_LEADS_BUCKET|name=["']email["']/i.test(content)) {
+    failures.push(`${name} still contains mandatory beta-access or lead-capture code`);
   }
 }
 
 if (failures.length > 0) {
-  console.error("Landing download link validation failed:");
+  console.error("Landing download validation failed:");
   for (const failure of failures) {
     console.error(`- ${failure}`);
   }
   process.exit(1);
 }
 
-console.log("Landing download links are valid.");
+console.log("Landing downloads are public and ungated.");

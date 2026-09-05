@@ -2,74 +2,62 @@
 
 ## What this project is
 
-A mobile input surface for controlling a desktop machine from a phone or tablet. The mobile surface sends pointer, keyboard, text, paste, and desktop action intent to a target backend.
+A mobile input surface for controlling an Omarchy machine from a phone or tablet. The mobile surface sends pointer, keyboard, text, paste, and Desktop Action intent to the TapPad Host.
 
 ## Core language
 
 **Mobile Input Surface**:
-The control surface that turns a phone or tablet into an input peripheral for a desktop machine. It may be delivered through the host-served web UI or the native TapPad Mobile App.
+The browser control surface that turns a phone or tablet into an input peripheral for an Omarchy machine. It is served by the TapPad Host.
 TapPad is a mobile input surface, not a remote desktop.
 
-**TapPad Mobile App**:
-The native phone and tablet shell that discovers nearby Desktop Host Surfaces, retains Paired Device credentials, and presents the Mobile Input Surface.
+**TapPad Host**:
+The headless Rust process that receives mobile input and applies it to Omarchy. It owns Device Authorization, the Host Contract, local networking, discovery, settings, input injection, and Desktop Actions.
 
-**Desktop Host Surface**:
-The target-desktop interface that helps a user start TapPad, pair a mobile device, inspect connection status, grant permissions, and change local settings.
-Each supported target backend has a desktop host surface; Linux requires a GUI desktop host surface rather than only a command-line process.
+**TapPad Shell Surface**:
+The Omarchy Quickshell interface that helps a Community User start or stop the TapPad Host, pair a mobile device, and inspect readiness. It does not implement input injection or expose pairing credentials through shell IPC.
 
 **Target Backend**:
-The desktop-side backend that receives mobile input and applies it to the target desktop environment. Omarchy/Linux and macOS are different target backends.
-
-**Host Adapter**:
-The target-specific implementation through which the single Desktop Host realizes the Host Contract on a Target Backend. Adding a Host Adapter extends platform support without creating another Desktop Host or mobile protocol.
-_Avoid_: Host implementation, when referring to an adapter
+The desktop environment controlled by the TapPad Host. Omarchy is TapPad's Target Backend.
 
 **Supported Target Backends**:
-The desktop platforms with a TapPad host surface and backend path today: macOS, Windows, and Linux/Omarchy.
+The desktop environments covered by the maintained product promise and acceptance flow. Current Omarchy is the only Supported Target Backend.
 
 **Platform Input Device**:
 The target-backend capability that applies pointer, click, scroll, key, and typed-text input to the target desktop.
 
-**Cross-Platform Beta**:
-The current product posture for the desktop host: macOS, Windows, and Linux/Omarchy are all beta target backends for validating the same mobile input surface and desktop host contract.
+**Omarchy-native**:
+The project's open-source posture: integrate with the current Omarchy Shell, commands, lifecycle, and conventions without maintaining cross-platform UI or release abstractions.
 
-**Commercial Wedge**:
-The buyer and platform focus used to prove paid value first. macOS was the first commercial wedge, but it is no longer the whole product position now that Windows and Linux host surfaces also exist.
-
-**macOS Host Path**:
-TapPad uses the cross-platform Tauri Desktop Host on macOS. The previous native AppKit implementation is retained only as reference code. If an observed macOS limitation requires native system integration, add a narrow macOS adapter without recreating the complete Desktop Host.
-
-**First Buyer**:
-A desktop user working across a larger screen, temporary desk setup, presentation setup, or second-screen workflow who wants a phone or tablet to become a temporary trackpad, keyboard, text surface, and control pad.
+**Community User**:
+A person using, testing, reporting on, or contributing to TapPad. Community Users are not customers and the project does not promise commercial support or platform parity.
 
 **Product Name**:
-TapPad is the public product name.
+OmaPad is the public product name. `TapPad` remains only as a legacy identifier
+during the repository and installed-state migration described in
+`docs/product/omapad-migration.md`.
 
 **Use Scenario**:
-A concrete situation where a first buyer reaches for TapPad, such as vibe coding on an external display, temporary trackpad use, text transfer, or presentation control. A use scenario is not a product category or product name.
+A concrete situation where a Community User reaches for TapPad, such as controlling an Omarchy machine from a phone, vibe coding on an external display, temporary trackpad use, text transfer, or presentation control. A use scenario is not a product category or product name.
 
 **Desktop Action**:
 An intentional action requested by the mobile input surface, such as taking a screenshot, changing workspace, or controlling media playback.
 
 **Host Contract**:
-The stable, platform-neutral interface between a Mobile Input Surface and a Desktop Host Surface. Target backends may implement it differently, but they share the same message meanings, authorization boundary, capability vocabulary, and result semantics.
+The stable interface between the Mobile Input Surface and the TapPad Host. It defines message meanings, Device Authorization, capability vocabulary, and result semantics.
 
 **Capability Advertisement**:
-A Desktop Host Surface's runtime declaration of which capabilities from the shared Host Contract are supported, unavailable, or intentionally hidden by its current Target Backend. It describes implementation availability without creating a target-specific mobile protocol.
+The TapPad Host's runtime declaration of capabilities available in the current Omarchy environment.
 
 ## Connection and trust
 
 **Stable Host Name**:
-The known local name a user opens to reach one Desktop Host Surface. It provides a route to a host; it is neither host discovery nor proof that the connecting device is trusted.
+The known local name a user opens to reach one TapPad Host. It provides a route to a host; it is neither discovery nor proof that the connecting device is trusted.
 
 **Device Authorization**:
-The first-use trust decision that allows a mobile device to control a Desktop Host Surface. Local-network reachability alone never grants authorization.
+The first-use trust decision that allows a mobile device to control a TapPad Host. Local-network reachability alone never grants authorization.
 
 **Paired Device**:
 A mobile device that has completed Device Authorization and retained its device credential for later automatic reconnection. Pairing lasts until the credential is revoked, forgotten, or replaced.
-
-**Nearby Host Discovery**:
-The native-app capability that lists Desktop Host Surfaces advertising TapPad on the current local network. Discovery supplies connection candidates; it does not authorize control.
 
 ## Input paths
 
@@ -93,7 +81,9 @@ Raw target-specific shell-command messages are outside the product protocol.
 
 ## Modules
 
-- **Protocol Router** — Classifies mobile input messages and routes them to the correct target backend capability.
+- **TapPad Host** — Owns the local server, trust state, lifecycle of input handling, and the Host Contract.
+- **TapPad Shell Surface** — Presents TapPad inside Omarchy Quickshell through a narrow local command/IPC interface.
+- **Protocol Router** — Classifies mobile input messages and routes them to the correct Omarchy capability.
 - **Input Device** — Represents pointer, click, scroll, keyboard, and typed-text input on the target desktop.
 - **Clipboard Gateway** — Represents clipboard-like text transfer on the target desktop.
 - **Command Registry** — Maps desktop action names to target backend behavior.

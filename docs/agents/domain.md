@@ -4,7 +4,7 @@ How the engineering skills should consume this repo's domain documentation when 
 
 ## Repo scope
 
-This is a single-context TapPad product repo. It includes macOS, Windows, and Linux/Omarchy target backends, the shared mobile input surface, the marketing landing site, and future product surfaces such as the online activation backend.
+This is a single-context TapPad open-source product repo. It includes one Omarchy Target Backend, the headless TapPad Host, the Omarchy Quickshell Shell Surface, the browser Mobile Input Surface, and the public project site.
 
 Do not split domain context just because multiple deliverables exist. Keep using the root `CONTEXT.md` until there are genuinely separate domain vocabularies that need separate owners.
 
@@ -13,7 +13,7 @@ Do not split domain context just because multiple deliverables exist. Keep using
 - **`CONTEXT.md`** at the repo root, or
 - **`CONTEXT-MAP.md`** at the repo root if it exists — it points at one `CONTEXT.md` per context. Read each one relevant to the topic.
 - **`docs/adr/`** — read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
-- **`docs/product/`** — read the relevant product boundary notes when working on commercialization, activation, pricing, packaging, website, onboarding, or release planning.
+- **`docs/product/`** — read the relevant product boundary notes when working on community strategy, packaging, website, onboarding, or release planning.
 
 If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The producer skill (`/grill-with-docs`) creates them lazily when terms or decisions actually get resolved.
 

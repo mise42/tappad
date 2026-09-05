@@ -1,12 +1,15 @@
 {
   "name": "tappad",
   "version": "0.1.0",
+  "description": "Open-source, Omarchy-native mobile input surface for phones and tablets",
+  "license": "MIT",
+  "repository": "github:miselabs/tappad",
   "private": true,
   "packageManager": "pnpm@11.21.0",
   "scripts": {
     "check:desktop-actions": "node scripts/check-desktop-actions.mjs",
     "check:download-manifest": "node scripts/check-download-manifest.mjs",
     "check:landing": "node scripts/check-landing-download-links.mjs",
-    "test": "pnpm run check:desktop-actions && pnpm run check:download-manifest && pnpm run check:landing"
+    "test": "pnpm run check:desktop-actions && pnpm run check:download-manifest && pnpm run check:landing && node --test tests/authorization.test.cjs"
   }
 }

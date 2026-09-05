@@ -8,22 +8,20 @@ const fixtureDir = mkdtempSync(path.join(tmpdir(), "tappad-download-manifest-"))
 const outputPath = path.join(fixtureDir, "downloads.json");
 
 try {
-  writeFileSync(path.join(fixtureDir, "TapPad-mac.zip"), "legacy native app");
-  writeFileSync(path.join(fixtureDir, "TapPad-setup.exe"), "windows app");
+  writeFileSync(path.join(fixtureDir, "TapPad.dmg"), "legacy macOS app");
+  writeFileSync(path.join(fixtureDir, "TapPad-setup.exe"), "legacy Windows app");
+  writeFileSync(path.join(fixtureDir, "TapPad-Omarchy-x86_64.tar.gz"), "Omarchy package");
 
-  let downloads = buildManifest();
-  assert(!downloads.some(({ platform }) => platform === "macos"), "legacy macOS ZIP must not be published");
-
-  writeFileSync(path.join(fixtureDir, "TapPad.dmg"), "tauri macOS app");
-  downloads = buildManifest();
-
-  const macosDownload = downloads.find(({ platform }) => platform === "macos");
-  assert(macosDownload?.file === "TapPad.dmg", "Tauri DMG must be the macOS download");
+  const downloads = buildManifest();
+  assert(downloads.length === 1, "only one maintained download must be published");
+  assert(downloads[0]?.platform === "linux", "the maintained download must target Omarchy");
+  assert(downloads[0]?.label === "Omarchy", "the download label must name Omarchy");
+  assert(downloads[0]?.file === "TapPad-Omarchy-x86_64.tar.gz", "the Omarchy package must be selected");
 } finally {
   rmSync(fixtureDir, { recursive: true, force: true });
 }
 
-console.log("Download manifest rejects legacy native macOS ZIP artifacts.");
+console.log("Download manifest publishes only the Omarchy artifact.");
 
 function buildManifest() {
   const result = spawnSync(

@@ -1,5 +1,5 @@
-const CACHE_NAME = 'touchpad-v11';
-const PRECACHE = ['/', '/index.html', '/styles.css', '/app.js'];
+const CACHE_NAME = 'touchpad-v12';
+const PRECACHE = ['/', '/index.html', '/styles.css', '/app.js', '/authorization.js'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -23,7 +23,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   // 绝不拦截 WebSocket 握手和动态 API
-  if (url.pathname === '/ws' || event.request.headers.get('upgrade') === 'websocket') {
+  if (url.pathname.startsWith('/api/') || url.pathname === '/ws' || event.request.headers.get('upgrade') === 'websocket') {
     return;
   }
   event.respondWith(
