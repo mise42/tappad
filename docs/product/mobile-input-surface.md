@@ -2,19 +2,25 @@
 
 ## Purpose
 
-The Mobile Input Surface is the browser UI used from a phone or tablet to
-control an Omarchy machine. The TapPad Host serves it directly over the local
-network; no native mobile application is required.
+The maintained phone/tablet client is the native Expo app in `mobile-app/`.
+It controls the headless Rust Host on Omarchy; Quickshell owns the desktop UI.
+The Host-served browser UI is a secondary fallback and does not replace native
+pairing, secure storage, or the native control surface.
 
 ## Entry journey
 
-1. The TapPad Shell Surface shows the local address and a pairing QR code.
-2. The Community User opens or scans it from a phone or tablet.
-3. The TapPad Host performs Device Authorization.
-4. The browser stores only the credential required for that Paired Device.
-5. Later visits reconnect while that credential remains valid.
+1. The app discovers `_tappad._tcp.local.` Hosts using native DNS-SD.
+2. The user selects a Host and scans its Quickshell pairing QR code in the app,
+   or enters the pairing token manually.
+3. The app validates the QR address and port against the selected Host, then
+   connects to `/ws?token=...` and waits for `ready` before saving credentials.
+4. SecureStore retains the pairing under the stable Host ID.
+5. Later discovery reconnects to that paired Host and opens native controls.
 
-mDNS supplies an address route only. It does not authorize a device.
+Discovery supplies candidates; it never grants Device Authorization. Preserve
+legacy service names, stable Host IDs, and tokens until an explicit identity
+migration. Native pairing must be tested on a real phone before deployment is
+claimed successful.
 
 ## Omarchy Desktop Actions
 
@@ -46,20 +52,21 @@ claiming the intended result.
 
 ## Omarchy authorization requests
 
-When the Host detects an existing `omarchy-polkit` layer, the browser surface
-shows an authorization control. A paired connection can submit a bounded ASCII
-password through the dedicated `authorize` message. The Host rechecks that the
-request is visible before typing the password and Enter. `authorizationResult`
-with `submitted` means input was sent, not that Polkit accepted it.
+When the Host detects a visible `omarchy-polkit` layer, the native app enables
+its authorization button. The first use saves an ASCII password in the phone's
+SecureStore, scoped to the Host ID. Later taps reuse it. The Host checks the
+request again before injecting the password and Enter; `submitted` reports only
+input submission, not successful Polkit authentication.
 
-The browser keeps the password only in page memory. It is never written to
-localStorage, sessionStorage, URLs, or Host settings. Refreshing, leaving the
-page, or disconnecting clears it; the user can also choose “忘记密码”. This
-replaces the retired Expo SecureStore flow without claiming equivalent durable
-secure storage in a LAN browser. After submission, a two-second cooldown allows
-the user to replace the password if the request remains visible. Missing replies
-never cause automatic retries.
+After two seconds, a still-active request offers password replacement and retry.
+The password field is masked by default and can be explicitly revealed. Passwords
+must not be stored in Host settings or logged. This native secure-storage flow
+remains maintained; the browser does not replace it with page-memory storage.
 
-Validation covers protocol routing, request detection, browser session state,
-and mocked browser interaction. A real phone/Polkit acceptance check is still
-required before claiming the deployed authorization flow works.
+## Development and verification
+
+`pnpm --filter mobile-app test` covers QR matching, protocol, input gestures,
+Codex actions, and authorization recovery; `pnpm --filter mobile-app typecheck`
+checks the native source. Android development uses the co-installable TapPad Dev
+variant described in `mobile-app/README.md`. Installing either client or replacing
+a running Host is a separate deployment step.

@@ -14,8 +14,8 @@ parity.
 
 Omarchy is the only Supported Target Backend. Documentation, installation,
 releases, acceptance, and maintainer testing cover current Omarchy. Other Linux
-desktops, macOS, Windows, and native mobile shells are outside the maintained
-product promise.
+desktop backends, macOS, and Windows are outside the maintained desktop promise.
+The native Expo Android/iOS phone client remains part of the product.
 
 TapPad is independent. Do not describe it as official, endorsed, sponsored, or
 affiliated with Omarchy or the Omacom Foundation unless that relationship is
@@ -27,9 +27,9 @@ explicitly established.
   discovery, the Host Contract, and Desktop Actions.
 - **TapPad Shell Surface** — Omarchy Quickshell plugin for lifecycle, status,
   readiness, and pairing.
-- **Mobile Input Surface** — browser UI served by the TapPad Host.
+- **Mobile Input Surface** — native Expo client for discovery, QR pairing, secure storage, and input; the Host-served browser UI remains a fallback.
 
-Tauri, native AppKit, Windows adapters, and the Expo discovery shell have been
+Tauri, native AppKit, and Windows desktop adapters have been
 removed from the maintained source.
 
 ## Roadmap order
@@ -48,11 +48,11 @@ not require an account or email address.
 
 The maintained test matrix is deliberately small:
 
-- automated Rust and browser protocol tests;
+- automated Rust, native mobile protocol/pairing tests and TypeScript checks;
 - Quickshell plugin validation;
 - one end-to-end acceptance flow on current Omarchy.
 
-No macOS, Windows, iOS, Android, or generic-Linux release matrix is promised.
+No macOS, Windows, or generic-Linux desktop release matrix is promised. Native Android/iOS client verification remains required, including real-device pairing.
 
 ## Sustainability
 

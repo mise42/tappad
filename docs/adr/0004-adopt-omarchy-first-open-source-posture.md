@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Partially superseded by ADR 0006: the Omarchy desktop decision remains accepted; the removal of native mobile is reversed.
 
 ## Context
 

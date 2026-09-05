@@ -4,7 +4,7 @@ How the engineering skills should consume this repo's domain documentation when 
 
 ## Repo scope
 
-This is a single-context TapPad open-source product repo. It includes one Omarchy Target Backend, the headless TapPad Host, the Omarchy Quickshell Shell Surface, the browser Mobile Input Surface, and the public project site.
+This is a single-context TapPad open-source product repo. It includes one Omarchy Target Backend, the headless TapPad Host, the Omarchy Quickshell Shell Surface, the native Expo Mobile Input Surface (plus a secondary browser fallback), and the public project site.
 
 Do not split domain context just because multiple deliverables exist. Keep using the root `CONTEXT.md` until there are genuinely separate domain vocabularies that need separate owners.
 

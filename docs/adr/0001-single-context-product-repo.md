@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-TapPad includes one Omarchy Target Backend, a headless TapPad Host, the TapPad Shell Surface, a browser Mobile Input Surface, and a public open-source project site.
+TapPad includes one Omarchy Target Backend, a headless TapPad Host, the TapPad Shell Surface, a native Expo Mobile Input Surface with a browser fallback, and a public open-source project site.
 
 These deliverables are different surfaces, but they still share one product language: Mobile Input Surface, Target Backend, Platform Input Device, Text Transfer, Desktop Action, Device Authorization, and Paired Device.
 
@@ -21,5 +21,5 @@ Do not introduce `CONTEXT-MAP.md` or per-surface `CONTEXT.md` files until the we
 ## Consequences
 
 - Engineering skills should read the root `CONTEXT.md` for product vocabulary before working anywhere in the repo.
-- Product, website, Host, Quickshell, and browser work should use the same names for shared concepts.
+- Product, website, Host, Quickshell, native mobile, and browser work should use the same names for shared concepts.
 - Future split points remain possible, but they should be driven by real domain divergence rather than directory structure alone.

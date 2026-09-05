@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. Its browser-only module description is superseded by ADR 0006; the naming decision remains unchanged.
 
 ## Context
 

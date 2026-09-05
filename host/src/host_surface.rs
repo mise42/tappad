@@ -229,6 +229,47 @@ mod tests {
     }
 
     #[test]
+    fn native_mobile_fixture_matches_headless_host() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/native-host.json")).unwrap();
+        let settings = test_settings();
+        let state = host_surface_state(&settings, true, None, true, true, None);
+        assert_eq!(fixture["pairingUrl"], state.pairing.preferred_url);
+        assert_eq!(fixture["hostId"], settings.host_id);
+        assert_eq!(fixture["serviceType"], crate::discovery::SERVICE_TYPE);
+        let ready = serde_json::to_value(crate::protocol::ServerMessage::ready(
+            settings.hostname,
+            crate::host_contract::current_host_contract(),
+        ))
+        .unwrap();
+        assert_eq!(
+            fixture["ready"]["protocolVersion"],
+            ready["protocolVersion"]
+        );
+        assert_eq!(
+            fixture["ready"]["contract"]["version"],
+            ready["contract"]["version"]
+        );
+        assert_eq!(
+            fixture["ready"]["contract"]["inputCapabilities"]["pointerButton"]["state"],
+            ready["contract"]["inputCapabilities"]["pointerButton"]["state"]
+        );
+        let message: crate::protocol::ClientMessage =
+            serde_json::from_value(fixture["authorization"].clone()).unwrap();
+        assert!(
+            matches!(message, crate::protocol::ClientMessage::Authorize { password } if password == "fixture-only")
+        );
+        assert_eq!(
+            fixture["result"],
+            serde_json::to_value(crate::protocol::ServerMessage::authorization_result(
+                "submitted",
+                "Input submitted."
+            ))
+            .unwrap()
+        );
+    }
+
+    #[test]
     fn pairing_state_includes_pairing_token() {
         let state = host_surface_state(&test_settings(), true, None, true, true, None);
 

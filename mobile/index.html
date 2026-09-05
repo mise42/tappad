@@ -10,11 +10,10 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="stylesheet" href="/styles.css?v17" />
+    <link rel="stylesheet" href="/styles.css?v16" />
   </head>
   <body>
     <main class="shell">
-      <div class="host-controls">
       <header class="topbar">
         <div>
           <h1>TapPad</h1>
@@ -23,25 +22,6 @@
         <button id="reconnect" type="button" aria-label="Reconnect">↻</button>
       </header>
 
-      <section id="authorization" class="authorization" hidden aria-label="Omarchy 授权">
-        <button id="authorize" type="button" disabled>授权</button>
-        <button id="replaceAuthorization" type="button" hidden>重新输入密码</button>
-        <button id="forgetAuthorization" type="button" hidden>忘记密码</button>
-        <p id="authorizationNotice" role="status" aria-live="polite">无当前请求</p>
-      </section>
-      </div>
-      <dialog id="authorizationDialog">
-        <form id="authorizationForm">
-          <h2>Omarchy 授权密码</h2>
-          <p>仅在当前页面暂存，刷新或断开连接后清除。</p>
-          <label for="authorizationPassword">密码（仅支持 ASCII）</label>
-          <input id="authorizationPassword" type="password" maxlength="1024" autocomplete="off" autocapitalize="off" spellcheck="false" required />
-          <button id="authorizationVisibility" type="button" aria-pressed="false">显示密码</button>
-          <p id="authorizationError" role="alert"></p>
-          <button id="cancelAuthorization" type="button">取消</button>
-          <button id="submitAuthorization" type="submit">提交</button>
-        </form>
-      </dialog>
       <div class="tab-bar">
         <button class="tab-btn active" data-tab="main" type="button">Pad</button>
         <button class="tab-btn" data-tab="keys" type="button">Keys</button>
@@ -176,7 +156,6 @@
         </div>
       </div>
     </main>
-    <script src="/authorization.js?v1"></script>
-    <script src="/app.js?v16"></script>
+    <script src="/app.js?v15"></script>
   </body>
 </html>

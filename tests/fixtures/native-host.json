@@ -1,0 +1,10 @@
+{
+  "serviceType": "_tappad._tcp.local.",
+  "hostId": "host-id",
+  "host": "tappad-host-id.local",
+  "port": 8765,
+  "pairingUrl": "http://tappad-host-id.local:8765/?token=pair-token",
+  "authorization": { "type": "authorize", "password": "fixture-only" },
+  "result": { "type": "authorizationResult", "status": "submitted", "message": "Input submitted." },
+  "ready": { "type": "ready", "protocolVersion": 2, "contract": { "version": 1, "protocolVersion": 2, "inputCapabilities": { "pointerButton": { "state": "supported" } } } }
+}

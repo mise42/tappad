@@ -1,6 +1,6 @@
 # Download distribution
 
-TapPad publishes one maintained download for current Omarchy:
+TapPad publishes one maintained desktop download for current Omarchy:
 
 1. The project site shows one Omarchy download button.
 2. Cloudflare Pages Function `GET /api/downloads` reads
@@ -21,6 +21,14 @@ The Omarchy release contains:
 
 macOS and Windows artifacts are no longer published.
 
+## Native mobile delivery
+
+The Expo Android/iOS client in `mobile-app/` remains maintained separately from
+the desktop archive. Existing native pairing and SecureStore identifiers are
+preserved. Development builds use the documented Expo commands, including the
+co-installable Android dev client. This desktop workflow does not publish a new
+APK or App Store build; mobile release delivery must be verified separately.
+
 ## Cloudflare Pages setup
 
 Deploy `landing/` as the Pages project root and bind only:
@@ -36,7 +44,7 @@ a mandatory form or write visitor details to the downloads bucket.
 
 A release is ready after:
 
-- automated Host and browser protocol checks pass;
+- automated Host and native mobile protocol, pairing, and type checks pass;
 - `omarchy plugin validate` accepts the Shell Surface;
 - install, first launch, pairing, core input, Desktop Actions, restart, update,
   and removal pass on current Omarchy;

@@ -102,47 +102,18 @@ function setStatus(text, state) {
   document.body.dataset.state = state;
 }
 
-const authorization = TapPadAuthorization.mount({
-  document,
-  send,
-  fetchState: async () => {
-    const response = await fetch('/api/host-state', { cache: 'no-store', signal: AbortSignal.timeout(3000) });
-    if (!response.ok) throw new Error('Host unavailable');
-    return response.json();
-  },
-});
-
 function connect() {
-  authorization.disconnected();
   if (ws) ws.close();
   setStatus("Connecting", "connecting");
-  const socket = new WebSocket(socketUrl());
-  ws = socket;
-  socket.addEventListener("open", () => {
-    if (ws !== socket) return;
-    setStatus("Connected", "ready");
-    authorization.connected();
-  });
-  socket.addEventListener("message", (event) => {
-    if (ws !== socket) return;
-    try { authorization.receive(JSON.parse(event.data)); } catch { /* Ignore malformed replies. */ }
-  });
-  socket.addEventListener("close", () => {
-    if (ws !== socket) return;
-    setStatus("Disconnected", "closed");
-    authorization.disconnected();
-  });
-  socket.addEventListener("error", () => {
-    if (ws !== socket) return;
-    setStatus("Connection error", "error");
-    authorization.disconnected();
-  });
+  ws = new WebSocket(socketUrl());
+  ws.addEventListener("open", () => setStatus("Connected", "ready"));
+  ws.addEventListener("close", () => setStatus("Disconnected", "closed"));
+  ws.addEventListener("error", () => setStatus("Connection error", "error"));
 }
 
 function send(message) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
   ws.send(JSON.stringify(message));
-  return true;
 }
 
 function flushMove() {
@@ -413,7 +384,6 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener("scroll", updateViewportSize);
 }
 window.addEventListener("pagehide", () => {
-  authorization.disconnected();
   clearPendingTap();
   releaseAllKeys();
   if (ws) ws.close();

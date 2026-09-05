@@ -145,7 +145,7 @@ Item {
 
           Text {
             visible: root.qrSource !== ""
-            text: "Scan with your phone to open the TapPad browser surface"
+            text: "Scan in the TapPad app to pair this Host"
             color: "#b8b8b8"
             font.family: Style.font.family
             font.pixelSize: 14

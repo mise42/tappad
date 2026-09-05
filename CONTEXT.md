@@ -7,7 +7,10 @@ A mobile input surface for controlling an Omarchy machine from a phone or tablet
 ## Core language
 
 **Mobile Input Surface**:
-The browser control surface that turns a phone or tablet into an input peripheral for an Omarchy machine. It is served by the TapPad Host.
+The native Expo app control surface that turns a phone or tablet into an input peripheral for an Omarchy machine. The Host-served browser surface is a secondary fallback, not a replacement for the native app.
+
+**TapPad Mobile App**:
+The maintained native Android/iOS client in `mobile-app/`. It discovers nearby Hosts, scans pairing QR codes, verifies Device Authorization, retains credentials in SecureStore, and provides native input and Omarchy authorization controls.
 TapPad is a mobile input surface, not a remote desktop.
 
 **TapPad Host**:

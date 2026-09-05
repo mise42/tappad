@@ -51,9 +51,9 @@ process arguments.
    ready.
 3. Opening the pairing view requests a QR payload containing the current
    persistent pairing credential.
-4. The phone opens the browser Mobile Input Surface and completes Device
-   Authorization.
+4. The native TapPad Mobile App discovers the Host, scans its QR code, verifies
+   the token over WebSocket, and stores the pairing in SecureStore.
 5. Later visits reconnect as a Paired Device.
 
 The Quickshell plugin is the only maintained desktop UI. Tauri tray, AppKit,
-Windows, and native mobile surfaces are outside the product.
+and Windows desktop surfaces are outside the product. The native Expo phone surface remains maintained.

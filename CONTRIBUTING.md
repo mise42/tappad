@@ -17,8 +17,9 @@ request.
 ## Maintained architecture
 
 The headless TapPad Host lives in `host/`. Do not add macOS, Windows,
-generic-Linux, AppKit, Expo, or Tauri features. Keep desktop UI in the Omarchy
-Quickshell plugin and phone UI in the browser surface.
+generic-Linux, AppKit, or Tauri desktop features. Keep desktop UI in the Omarchy
+Quickshell plugin and the primary phone UI in the native Expo `mobile-app/`.
+Native discovery, QR pairing, SecureStore, authorization, and Android dev-client support are maintained requirements. The browser surface is a secondary fallback.
 
 Current checks are:
 

@@ -8,8 +8,7 @@ OmaPad has three maintained modules:
   Device Authorization, input injection, discovery, and Desktop Actions;
 - **OmaPad Shell Surface** — the Omarchy Quickshell interface for lifecycle,
   readiness, settings, and pairing; and
-- **Mobile Input Surface** — the browser interface served directly by the Host
-  and opened from a phone or tablet.
+- **Mobile Input Surface** — the maintained native Expo app, with discovery, QR pairing, SecureStore, and authorization; the browser is a secondary fallback.
 
 The Host Contract is the stable interface between the Mobile Input Surface and
 the Host. The Shell Surface uses a separate, narrow local command interface.
@@ -30,17 +29,16 @@ native macOS client.
 ### 2. Finish the Omarchy-only architecture cleanup
 
 - Keep `host/`, `omarchy-plugin/`, `mobile/`, and reversible packaging.
-- Remove the Tauri Desktop Host, cross-platform packaging, and Expo discovery
-  shell from the maintained tree.
+- Remove the Tauri Desktop Host, cross-platform desktop packaging from the maintained tree. Preserve the Expo native mobile app.
 - Make the Quickshell Surface the only maintained desktop interface.
 
 Exit condition: the repository test and release paths cover current Omarchy
-without macOS, Windows, generic-Linux, iOS, or Android release jobs.
+without macOS, Windows, or generic-Linux desktop release jobs. Native Android/iOS app development and verification remain in scope.
 
 ### 3. Change the public product name
 
 - Replace current human-facing `TapPad` copy with `OmaPad` in the README,
-  website, Shell Surface, browser UI, documentation, and contribution files.
+  website, Shell Surface, native mobile UI, browser fallback, documentation, and contribution files.
 - Rename screenshots and other maintained assets when their filenames are part
   of public output.
 - Preserve the old name inside historical ADR text where changing it would

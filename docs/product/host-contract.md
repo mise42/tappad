@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The Host Contract is the stable interface between the browser Mobile Input
+The Host Contract is the stable interface between the native Mobile Input
 Surface and the headless TapPad Host. It defines input messages, named Desktop
 Actions, Device Authorization, capability states, and execution results.
 
@@ -36,7 +36,7 @@ snapshot supports preflight and status refresh.
 - Message shapes, action IDs, capability meanings, Device Authorization, and
   result semantics belong to the Host Contract.
 - Only actions advertised as runnable may execute.
-- Browser clients ignore unknown additive fields and action IDs.
+- Native and browser clients ignore unknown additive fields and action IDs.
 - Raw commands never cross the Host Contract.
 - Changing an existing message or action meaning is breaking; adding an
   optional field or capability is additive.
