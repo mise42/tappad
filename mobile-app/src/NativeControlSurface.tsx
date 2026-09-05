@@ -30,9 +30,9 @@ import {
   shouldMaskAuthorizationPassword,
 } from './authorization';
 import {
+  CODEX_VOICE_RECORD_ACTION,
   CODEX_VOICE_END_ACTION,
   CODEX_VOICE_MICROPHONE_ACTION,
-  CODEX_VOICE_START_FOREGROUND_ACTION,
   codexVoiceControl,
   codexVoiceResultNotice,
   codexVoiceSentNotice,
@@ -176,7 +176,7 @@ function statusText(state: ConnectionState) {
 
 function codexVoiceIcon(action: string): ComponentProps<typeof MaterialCommunityIcons>['name'] {
   switch (action) {
-    case CODEX_VOICE_START_FOREGROUND_ACTION: return 'account-voice';
+    case CODEX_VOICE_RECORD_ACTION: return 'account-voice';
     case CODEX_VOICE_END_ACTION: return 'phone-hangup';
     case CODEX_VOICE_MICROPHONE_ACTION: return 'microphone-off';
     default: return 'microphone-outline';
@@ -300,7 +300,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
         }
         if (message.type === 'disconnected') {
           hostDisconnectedRef.current = true;
-          setNotice('Host 已断开当前连接；配对仍保留，点 Reconnect 可重新连接。');
+          setNotice('Disconnected by Host. Pairing is saved; tap Reconnect.');
           socket.close();
           return;
         }
@@ -423,7 +423,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
       () => {
         if (!active) return;
         setAuthorizationPasswordSaved(false);
-        setNotice('无法读取此 Host 的本机授权密码。');
+        setNotice('Unable to read the saved Host password.');
       },
     );
     return () => { active = false; };
@@ -432,11 +432,11 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
   const submitAuthorization = useCallback((password: string) => {
     if (!send({ type: 'authorize', password })) {
       setAuthorizationSubmitting(false);
-      setNotice('TapPad 未连接，授权输入未提交。');
+      setNotice('Disconnected. Authorization was not submitted.');
       return false;
     }
     setAuthorizationSubmitting(true);
-    setNotice('正在提交…');
+    setNotice('Submitting…');
     return true;
   }, [send]);
 
@@ -475,7 +475,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
         }
         setAuthorizationPasswordSaved(false);
       } catch {
-        setNotice('无法读取此 Host 的本机授权密码。');
+        setNotice('Unable to read the saved Host password.');
         return;
       }
     }
@@ -494,7 +494,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
       return;
     }
     if (!authorizationRequestActive) {
-      setAuthorizationPasswordIssue('当前授权请求已结束。');
+      setAuthorizationPasswordIssue('The authorization request has ended.');
       return;
     }
     try {
@@ -510,7 +510,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
       submitAuthorization(authorizationPassword);
       setAuthorizationPassword('');
     } catch {
-      setAuthorizationPasswordIssue('无法把密码保存到此设备的安全存储。');
+      setAuthorizationPasswordIssue('Unable to save the password securely.');
     }
   }, [authorizationPassword, authorizationRequestActive, hostId, submitAuthorization]);
 
@@ -591,7 +591,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
 
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="提交当前 Omarchy 授权请求"
+        accessibilityLabel="Submit the current Omarchy authorization request"
         accessibilityState={{ disabled: !authorizationRequestActive || connectionState !== 'connected' || authorizationSubmitting || authorizationCoolingDown || authorizationPasswordSaved === undefined }}
         disabled={!authorizationRequestActive || connectionState !== 'connected' || authorizationSubmitting || authorizationCoolingDown || authorizationPasswordSaved === undefined}
         onPress={() => void authorize()}
@@ -609,25 +609,25 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
         <Text style={[
           styles.authorizationButtonText,
           authorizationRequestActive && connectionState === 'connected' && styles.authorizationButtonTextActive,
-        ]}>授权</Text>
+        ]}>Authorize</Text>
         <Text style={[
           styles.authorizationButtonState,
           authorizationRequestActive && connectionState === 'connected' && styles.authorizationButtonTextActive,
-        ]}>{authorizationSubmitting ? '正在提交' : authorizationCoolingDown ? '请稍候' : authorizationRequestActive ? '有待处理请求' : '无当前请求'}</Text>
+        ]}>{authorizationSubmitting ? 'Submitting' : authorizationCoolingDown ? 'Please wait' : authorizationRequestActive ? 'Request pending' : 'No request'}</Text>
       </Pressable>
 
       {authorizationRecovery === 'cooldown' ? (
-        <Text style={styles.authorizationRecoveryHint}>已提交；稍后可重新输入密码。</Text>
+        <Text style={styles.authorizationRecoveryHint}>Submitted. Password retry will be available shortly.</Text>
       ) : null}
       {authorizationRecovery === 'replace' ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="重新输入并替换此 Host 的授权密码"
+          accessibilityLabel="Replace this Host authorization password"
           onPress={replaceAuthorizationPassword}
           style={({ pressed }) => [styles.authorizationReplaceButton, pressed && styles.controlPressed]}
         >
           <MaterialCommunityIcons name="key-change" size={16} color={theme.color.textStrong} />
-          <Text style={styles.authorizationReplaceText}>重新输入密码</Text>
+          <Text style={styles.authorizationReplaceText}>Replace password</Text>
         </Pressable>
       ) : null}
 
@@ -672,8 +672,8 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
         {/* The edge-to-edge dialog window does not resize for the IME, so keep the form in the top half. */}
         <View style={[styles.modalScrim, { paddingTop: topSafeArea + 48 }]}>
           <View style={styles.authorizationDialog}>
-            <Text style={styles.authorizationDialogTitle}>{authorizationReplacingPassword ? '重新输入此 Host 的授权密码' : '保存此 Host 的授权密码'}</Text>
-            <Text style={styles.authorizationDialogBody}>密码只保存在这台手机的安全存储中，不同步。首版仅支持 ASCII。</Text>
+            <Text style={styles.authorizationDialogTitle}>{authorizationReplacingPassword ? 'Replace Host password' : 'Save Host password'}</Text>
+            <Text style={styles.authorizationDialogBody}>Stored securely on this phone only. ASCII passwords supported.</Text>
             <View style={styles.authorizationPasswordRow}>
               <TextInput
                 value={authorizationPassword}
@@ -682,14 +682,14 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
                 secureTextEntry={shouldMaskAuthorizationPassword(authorizationPasswordVisible)}
                 autoCapitalize="none"
                 autoCorrect={false}
-                placeholder="密码"
+                placeholder="Password"
                 placeholderTextColor={theme.color.textSubtle}
                 onSubmitEditing={() => void saveAndSubmitAuthorization()}
                 style={styles.authorizationPasswordInput}
               />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={authorizationPasswordVisible ? '隐藏密码' : '显示密码'}
+                accessibilityLabel={authorizationPasswordVisible ? 'Hide password' : 'Show password'}
                 onPress={() => setAuthorizationPasswordVisible((visible) => !visible)}
                 style={({ pressed }) => [styles.authorizationVisibilityButton, pressed && styles.controlPressed]}
               >
@@ -703,14 +703,14 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
             {authorizationPasswordIssue ? <Text style={styles.authorizationPasswordIssue}>{authorizationPasswordIssue}</Text> : null}
             <View style={styles.authorizationDialogActions}>
               <Pressable onPress={closeAuthorizationPasswordModal} style={styles.authorizationCancelButton}>
-                <Text style={styles.authorizationCancelText}>取消</Text>
+                <Text style={styles.authorizationCancelText}>Cancel</Text>
               </Pressable>
               <Pressable
                 onPress={() => void saveAndSubmitAuthorization()}
                 disabled={!authorizationRequestActive}
                 style={[styles.authorizationSubmitButton, !authorizationRequestActive && styles.controlDisabled]}
               >
-                <Text style={styles.authorizationSubmitText}>{authorizationReplacingPassword ? '替换并提交' : '保存并提交'}</Text>
+                <Text style={styles.authorizationSubmitText}>{authorizationReplacingPassword ? 'Replace and submit' : 'Save and submit'}</Text>
               </Pressable>
             </View>
           </View>
@@ -1129,15 +1129,20 @@ function ActionsPanel({ capabilities, capabilityError, hostName, sendAction }: {
   hostName: string;
   sendAction: (label: string, action: string, sentNotice?: string) => void;
 }) {
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
   const workspaceActions = supportedWorkspaceActions(capabilities);
   const codexVoice = codexVoiceControl(capabilities);
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollPanel} showsVerticalScrollIndicator={false}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Actions</Text>
-        {!capabilities && !capabilityError ? <Text style={styles.sectionBody}>Checking availability…</Text> : null}
-      </View>
+    <ScrollView
+      contentContainerStyle={styles.actionsPanel}
+      scrollEnabled={contentHeight > viewportHeight + 1}
+      onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
+      onContentSizeChange={(_, height) => setContentHeight(height)}
+      showsVerticalScrollIndicator={false}
+    >
+      {!capabilities && !capabilityError ? <Text style={styles.sectionBody}>Checking availability…</Text> : null}
       {capabilityError ? <Text style={styles.inlineWarning}>Availability check failed: {capabilityError}</Text> : null}
       {workspaceActions.length > 0 ? (
         <View style={styles.actionGroup}>
@@ -1220,6 +1225,7 @@ function ActionsPanel({ capabilities, capabilityError, hostName, sendAction }: {
                   onPress={() => sendAction(label, action)}
                   style={({ pressed }) => [
                     styles.actionButton,
+                    group.title === 'Desktop' && styles.desktopActionButton,
                     unavailable && styles.actionButtonUnavailable,
                     pressed && styles.actionButtonPressed,
                   ]}
@@ -1336,10 +1342,12 @@ const styles = StyleSheet.create({
   releaseButton: { height: 40, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', marginTop: theme.space.lg, backgroundColor: theme.color.dangerSurface, borderWidth: 1, borderColor: theme.color.dangerBorder },
   releaseButtonPressed: { backgroundColor: '#F0DEDF' },
   releaseButtonText: { color: theme.color.danger, fontSize: 12, fontWeight: '700' },
-  actionGroup: { marginTop: 16 },
+  actionsPanel: { paddingHorizontal: 14, paddingTop: 2, paddingBottom: 8, gap: 14 },
+  actionGroup: { marginTop: 0 },
   groupTitle: { color: theme.color.textMuted, fontSize: 12, fontWeight: '700' },
   actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  actionButton: { width: '48.5%', minHeight: 58, borderRadius: theme.radius.panel, paddingHorizontal: theme.space.md, paddingVertical: 9, justifyContent: 'center', backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
+  actionButton: { width: '31.5%', minHeight: 52, borderRadius: theme.radius.panel, paddingHorizontal: 8, paddingVertical: 8, justifyContent: 'center', backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
+  desktopActionButton: { width: '48.5%' },
   actionButtonPressed: { backgroundColor: theme.color.surfacePressed },
   actionButtonUnavailable: { backgroundColor: theme.color.warningSurface, borderColor: theme.color.warningBorder },
   actionButtonText: { color: theme.color.textStrong, fontSize: 13, fontWeight: '700' },

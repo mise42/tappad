@@ -16,15 +16,15 @@ export function authorizationPasswordKey(hostId: string) {
 }
 
 export function authorizationPasswordError(password: string) {
-  if (!password) return '请输入此 Host 的密码。';
-  if (!/^[\x20-\x7E]+$/.test(password)) return '首版授权仅支持 ASCII 密码。';
-  if (password.length > AUTHORIZATION_PASSWORD_LIMIT_BYTES) return '密码过长。';
+  if (!password) return 'Enter the Host password.';
+  if (!/^[\x20-\x7E]+$/.test(password)) return 'Only ASCII passwords are supported.';
+  if (password.length > AUTHORIZATION_PASSWORD_LIMIT_BYTES) return 'Password is too long.';
   return null;
 }
 
 export function authorizationResultNotice(status: string | undefined, message: string | undefined) {
-  if (status === 'submitted') return '已提交';
-  return message || '授权输入未提交。';
+  if (status === 'submitted') return 'Submitted';
+  return message || 'Authorization was not submitted.';
 }
 
 export function authorizationRecoveryState({

@@ -71,3 +71,18 @@ Codex actions, and authorization recovery; `pnpm --filter mobile-app typecheck`
 checks the native source. Android development uses the co-installable TapPad Dev
 variant described in `mobile-app/README.md`. Installing either client or replacing
 a running Host is a separate deployment step.
+
+### Codex Record
+
+The native Codex group has one `Record` control plus End and Mute. Record sends
+`codex.voice.record`; the Host chooses the registered current-window voice
+command when the verified Codex process is foreground, otherwise the configured
+global voice command. It does not focus Codex before choosing. Missing commands,
+missing bindings, failed foreground inspection, or a window change during
+resolution return an error; there is no fallback from current-window to global.
+Legacy explicit start actions remain in the protocol for older clients.
+
+On installations without a default current-window shortcut, configure the
+registered `composer.startVoiceMode` command in Codex's shortcut settings. This
+is separate from dictation and the OS-global `realtimeVoice` command. Successful
+shortcut dispatch does not establish that a voice session started.

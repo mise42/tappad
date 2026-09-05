@@ -44,6 +44,7 @@ pub const ACTION_IDS: &[&str] = &[
     "workspace.3",
     "workspace.4",
     "workspace.5",
+    "codex.voice.record",
     "codex.voice.start",
     "codex.voice.start_foreground",
     "codex.voice.end",

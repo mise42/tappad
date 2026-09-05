@@ -18,6 +18,8 @@ use super::{ActionError, scoped_capability};
 
 mod metadata;
 
+pub(super) const RECORD_VOICE_ACTION: &str = "codex.voice.record";
+
 pub(super) const START_VOICE_ACTION: &str = "codex.voice.start";
 pub(super) const START_FOREGROUND_VOICE_ACTION: &str = "codex.voice.start_foreground";
 pub(super) const END_VOICE_ACTION: &str = "codex.voice.end";
@@ -93,7 +95,8 @@ impl ProbePaths {
 pub(super) fn is_codex_action(action: &str) -> bool {
     matches!(
         action,
-        START_VOICE_ACTION
+        RECORD_VOICE_ACTION
+            | START_VOICE_ACTION
             | START_FOREGROUND_VOICE_ACTION
             | END_VOICE_ACTION
             | TOGGLE_MICROPHONE_ACTION
@@ -102,6 +105,7 @@ pub(super) fn is_codex_action(action: &str) -> bool {
 
 pub(super) fn capability(action: &str) -> Option<CapabilityStatus> {
     match action {
+        RECORD_VOICE_ACTION => Some(record_voice_capability()),
         START_VOICE_ACTION => Some(start_voice_capability()),
         START_FOREGROUND_VOICE_ACTION => Some(app_voice_capability(
             "Toggle Voice Chat in Codex",
@@ -122,6 +126,25 @@ pub(super) async fn execute(
 ) -> Result<(), ActionError> {
     let paths = ProbePaths::current_host()
         .map_err(|error| ActionError::unavailable("Linux", action, error.detail))?;
+    if action == RECORD_VOICE_ACTION {
+        let mut input = input.lock().await;
+        let before = read_hyprland_active_window_async().await
+            .map_err(|error| ActionError::unavailable("Linux", action, error.detail))?;
+        let route = record_route(&paths, &before)
+            .map_err(|error| ActionError::unavailable("Linux", action, error.detail))?;
+        let binding = record_binding(&paths, route)
+            .map_err(|error| ActionError::unavailable("Linux", action, error.detail))?;
+        let after = read_hyprland_active_window_async().await
+            .map_err(|error| ActionError::unavailable("Linux", action, error.detail))?;
+        if !same_focus(&before, &after) {
+            return Err(ActionError::unavailable("Linux", action,
+                "Foreground changed before dispatch. Try Record again."));
+        }
+        let codes: Vec<&str> = binding.input_codes.iter().map(String::as_str).collect();
+        input.chord(&codes).map_err(|error| ActionError::failed("Linux", action, error))?;
+        log::info!("Codex record shortcut dispatched via {route:?}");
+        return Ok(());
+    }
     if action == START_VOICE_ACTION {
         let binding = probe_start_binding(&paths)
             .map_err(|error| ActionError::unavailable("Linux", action, error.detail))?;
@@ -155,6 +178,61 @@ pub(super) async fn execute(
     input
         .chord(&codes)
         .map_err(|error| ActionError::failed("Linux", action, error))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RecordRoute { CurrentWindow, Global }
+
+fn record_route(paths: &ProbePaths, active: &str) -> Result<RecordRoute, ProbeError> {
+    let value: serde_json::Value = serde_json::from_str(active).map_err(foreground_probe_error)?;
+    if value.as_object().is_some_and(|object| object.is_empty()) {
+        return Ok(RecordRoute::Global);
+    }
+    let window: HyprlandActiveWindow = serde_json::from_value(value).map_err(foreground_probe_error)?;
+    if is_codex_window_class(&window.class) || is_codex_window_class(&window.initial_class) {
+        verify_codex_foreground(paths, active)?;
+        Ok(RecordRoute::CurrentWindow)
+    } else {
+        Ok(RecordRoute::Global)
+    }
+}
+
+fn record_binding(paths: &ProbePaths, route: RecordRoute) -> Result<StartBinding, ProbeError> {
+    match route {
+        RecordRoute::CurrentWindow => resolve_effective_app_binding(paths, START_FOREGROUND_VOICE_COMMAND),
+        RecordRoute::Global => probe_start_binding(paths),
+    }
+}
+
+fn same_focus(before: &str, after: &str) -> bool {
+    let parse = |value: &str| serde_json::from_str::<serde_json::Value>(value).ok();
+    match (parse(before), parse(after)) {
+        (Some(before), Some(after)) => ["address", "pid", "class", "initialClass"]
+            .iter().all(|key| before.get(key) == after.get(key)),
+        _ => false,
+    }
+}
+
+fn record_voice_capability() -> CapabilityStatus {
+    let result = ProbePaths::current_host().and_then(|paths| {
+        let active = read_hyprland_active_window()?;
+        let route = record_route(&paths, &active)?;
+        record_binding(&paths, route).map(|binding| (route, binding))
+    });
+    match result {
+        Ok((route, binding)) => {
+            let target = match route {
+                RecordRoute::CurrentWindow => "current Codex window",
+                RecordRoute::Global => "global Codex voice",
+            };
+            let mut capability = scoped_capability("supported",
+                format!("Currently targets {target}; foreground is checked again when Record is pressed."),
+                "contextual", None);
+            capability.binding = Some(binding.accelerator);
+            capability
+        },
+        Err(error) => scoped_capability("unavailable", error.detail, "contextual", Some(error.reason_code)),
+    }
 }
 
 fn start_voice_capability() -> CapabilityStatus {
@@ -740,6 +818,44 @@ mod tests {
         file.write_all(&vec![0; padding]).expect("padding");
         file.write_all(source.as_bytes()).expect("source");
         paths.app_archives = vec![archive];
+    }
+
+    #[test]
+    fn record_selects_verified_foreground_or_global_without_focusing() {
+        let (_temp, paths) = fixture(json!([]), true);
+        assert_eq!(record_route(&paths, &active_window("chatgpt", "chatgpt", 1234)), Ok(RecordRoute::CurrentWindow));
+        assert_eq!(record_route(&paths, &active_window("terminal", "terminal", 9999)), Ok(RecordRoute::Global));
+        assert_eq!(record_route(&paths, "{}"), Ok(RecordRoute::Global));
+        for invalid in ["not json", "null", r#"{"class":"chatgpt"}"#] {
+            assert!(record_route(&paths, invalid).is_err());
+        }
+        assert!(record_route(&paths, &active_window("chatgpt", "terminal", 1234)).is_err());
+        assert!(record_route(&paths, &active_window("chatgpt", "chatgpt", 9999)).is_err());
+    }
+
+    #[test]
+    fn record_never_falls_back_to_global_when_current_binding_is_missing() {
+        let (temp, mut paths) = fixture(json!([{ "command": START_VOICE_COMMAND, "key": "Command+F2" }]), true);
+        install_metadata_archive(&temp, &mut paths,
+            "{id:`composer.startVoiceMode`,shortcutScope:`app`,electron:{defaultKeybindings:[]}}");
+        assert!(record_binding(&paths, RecordRoute::CurrentWindow).is_err());
+        assert_eq!(record_binding(&paths, RecordRoute::Global).unwrap().accelerator, "Command+F2");
+        fs::write(&paths.keybindings, json!([
+            {"command": START_VOICE_COMMAND, "key": "Command+F2"},
+            {"command": START_FOREGROUND_VOICE_COMMAND, "key": "Ctrl+Shift+F8"}
+        ]).to_string()).unwrap();
+        assert_eq!(record_binding(&paths, RecordRoute::CurrentWindow).unwrap().input_codes,
+            vec!["ControlLeft", "ShiftLeft", "F8"]);
+    }
+
+    #[test]
+    fn record_rechecks_window_identity_even_between_two_codex_windows() {
+        let a = r#"{"class":"chatgpt","initialClass":"chatgpt","pid":1234,"address":"0x1"}"#;
+        let b = r#"{"class":"chatgpt","initialClass":"chatgpt","pid":1234,"address":"0x2"}"#;
+        assert!(same_focus(a, a));
+        assert!(!same_focus(a, b));
+        assert!(!same_focus(a, "{}"));
+        assert!(!same_focus(a, "invalid"));
     }
 
     #[test]

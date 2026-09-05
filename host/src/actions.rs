@@ -63,7 +63,8 @@ pub const UI_ACTION_IDS: &[&str] = &[
 pub fn reports_execution_result(action: &str) -> bool {
     matches!(
         action,
-        "codex.voice.start"
+        "codex.voice.record"
+            | "codex.voice.start"
             | "codex.voice.start_foreground"
             | "codex.voice.end"
             | "codex.voice.toggle_microphone"
@@ -72,6 +73,7 @@ pub fn reports_execution_result(action: &str) -> bool {
 
 pub fn execution_success_message(action: &str) -> Option<&'static str> {
     match action {
+        "codex.voice.record" => Some("The Host dispatched the voice shortcut for the foreground state. Voice session status is not confirmed."),
         "codex.voice.start" => Some(
             "The Host dispatched Codex's configured voice hotkey. Voice session status is not confirmed.",
         ),
@@ -385,7 +387,7 @@ mod tests {
                 .iter()
                 .filter(|action| action.starts_with("codex.voice."))
                 .count(),
-            4
+            5
         );
     }
 

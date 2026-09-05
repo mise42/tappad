@@ -536,11 +536,16 @@ async fn apply_backend_effect(
                 return Some(ServerMessage::error(code, error.to_string()));
             }
             if reports_execution_result {
+                static NEXT_ACTION_TRACE: AtomicU64 = AtomicU64::new(1);
+                let trace = NEXT_ACTION_TRACE.fetch_add(1, Ordering::Relaxed);
+                let started = std::time::Instant::now();
+                info!("action {trace} received client={client_id} action={action}");
                 record_action_attempt(&action);
                 return Some(
                     match state.actions.run(state.input.clone(), &action).await {
                         Ok(()) => {
                             record_action_success(&action);
+                            info!("action {trace} dispatched client={client_id} action={action} elapsed_ms={}", started.elapsed().as_millis());
                             ServerMessage::action_result(
                                 action.clone(),
                                 "sent",
@@ -550,7 +555,7 @@ async fn apply_backend_effect(
                         }
                         Err(error) => {
                             record_action_failure(&action, &error.to_string());
-                            warn!("cmd failed for {client_id} ({action}): {error}");
+                            warn!("action {trace} failed client={client_id} action={action} elapsed_ms={} error={error}", started.elapsed().as_millis());
                             ServerMessage::action_result(action, "failed", error.to_string())
                         }
                     },

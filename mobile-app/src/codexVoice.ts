@@ -1,5 +1,6 @@
 import type { ActionCapabilities, ActionCapability } from './protocol';
 
+export const CODEX_VOICE_RECORD_ACTION = 'codex.voice.record';
 export const CODEX_VOICE_START_ACTION = 'codex.voice.start';
 export const CODEX_VOICE_START_FOREGROUND_ACTION = 'codex.voice.start_foreground';
 export const CODEX_VOICE_END_ACTION = 'codex.voice.end';
@@ -16,19 +17,6 @@ export type CodexVoiceAction = {
 export type CodexVoiceControl = {
   actions: CodexVoiceAction[];
   foregroundRequired: boolean;
-};
-
-const START_FAILURE_COPY: Record<string, string> = {
-  codex_not_installed: 'Codex desktop was not found on this Host.',
-  codex_not_running: 'Open Codex on the Host to register its global hotkey.',
-  codex_home_unavailable: 'The Host cannot locate Codex keybindings.',
-  codex_bindings_unreadable: 'The Host cannot read Codex keybindings.',
-  codex_bindings_invalid: 'Codex keybindings are not valid.',
-  codex_global_binding_missing: 'No global Voice Chat hotkey is configured.',
-  codex_global_binding_ambiguous: 'More than one global Voice Chat hotkey is configured.',
-  codex_global_binding_unsupported: 'The configured Voice Chat hotkey cannot be sent safely.',
-  codex_runtime_unreadable: 'The Host cannot verify that Codex is running.',
-  codex_platform_not_verified: 'Global Codex voice control is not verified on this Host.',
 };
 
 const APP_FAILURE_COPY: Record<string, { detail: string; disabledLabel: string }> = {
@@ -48,26 +36,6 @@ const APP_FAILURE_COPY: Record<string, { detail: string; disabledLabel: string }
   codex_bindings_unreadable: { detail: 'Keybindings unavailable.', disabledLabel: 'Unavailable' },
   codex_bindings_invalid: { detail: 'Invalid keybindings.', disabledLabel: 'Unavailable' },
 };
-
-function startAction(capability: ActionCapability | undefined): CodexVoiceAction {
-  const enabled = capability?.state === 'supported' && capability.scope === 'os-global';
-  const detail = enabled
-    ? capability.binding
-      ? `Configured global hotkey: ${capability.binding}`
-      : 'Sends the configured global Voice Chat hotkey.'
-    : capability?.reasonCode && START_FAILURE_COPY[capability.reasonCode]
-      ? START_FAILURE_COPY[capability.reasonCode]
-      : capability?.state === 'supported'
-        ? 'The Host did not verify this Voice Chat hotkey as OS-global.'
-        : capability?.note || 'The Host did not advertise a usable global Voice Chat hotkey.';
-  return {
-    action: CODEX_VOICE_START_ACTION,
-    label: 'Start',
-    enabled,
-    detail,
-    disabledLabel: enabled ? undefined : 'Unavailable',
-  };
-}
 
 function appAction(
   action: string,
@@ -89,32 +57,29 @@ function appAction(
 }
 
 export function codexVoiceControl(capabilities: ActionCapabilities | null): CodexVoiceControl | null {
-  if (!capabilities) return null;
-
-  const start = capabilities[CODEX_VOICE_START_ACTION];
-  const foregroundStart = capabilities[CODEX_VOICE_START_FOREGROUND_ACTION];
-  const end = capabilities[CODEX_VOICE_END_ACTION];
-  const microphone = capabilities[CODEX_VOICE_MICROPHONE_ACTION];
-  if (!start && !foregroundStart && !end && !microphone) return null;
-  if (![start, foregroundStart, end, microphone].some(
-    (capability) => capability?.scope === 'os-global' || capability?.scope === 'app',
-  )) return null;
-
-  const appActions = [
-    appAction(CODEX_VOICE_START_FOREGROUND_ACTION, 'Start here', foregroundStart),
-    appAction(CODEX_VOICE_END_ACTION, 'End', end),
-    appAction(CODEX_VOICE_MICROPHONE_ACTION, 'Mute', microphone),
-  ].filter((action): action is CodexVoiceAction => action !== null);
+  if (!capabilities || !Object.keys(capabilities).some((key) => key.startsWith('codex.voice.'))) return null;
+  const record = capabilities[CODEX_VOICE_RECORD_ACTION];
+  const enabled = record?.state === 'supported' && record.scope === 'contextual';
+  const actions: CodexVoiceAction[] = [{
+    action: CODEX_VOICE_RECORD_ACTION,
+    label: 'Record',
+    enabled,
+    detail: record?.note || 'Update the Host to enable foreground-aware recording.',
+    disabledLabel: enabled ? undefined : 'Unavailable',
+  }];
+  for (const [action, label] of [[CODEX_VOICE_END_ACTION, 'End'], [CODEX_VOICE_MICROPHONE_ACTION, 'Mute']]) {
+    const control = appAction(action, label, capabilities[action]);
+    if (control) actions.push(control);
+  }
   return {
-    actions: [startAction(start), ...appActions],
-    foregroundRequired: appActions.some(
-      (action) => !action.enabled && action.disabledLabel === 'Focus Codex',
-    ),
+    actions,
+    foregroundRequired: actions.slice(1).some((action) => action.disabledLabel === 'Focus Codex'),
   };
 }
 
 export function isCodexVoiceAction(action: string | undefined): action is string {
-  return action === CODEX_VOICE_START_ACTION
+  return action === CODEX_VOICE_RECORD_ACTION
+    || action === CODEX_VOICE_START_ACTION
     || action === CODEX_VOICE_START_FOREGROUND_ACTION
     || action === CODEX_VOICE_END_ACTION
     || action === CODEX_VOICE_MICROPHONE_ACTION;
@@ -122,6 +87,8 @@ export function isCodexVoiceAction(action: string | undefined): action is string
 
 export function codexVoiceSentNotice(action: string, hostName: string) {
   switch (action) {
+    case CODEX_VOICE_RECORD_ACTION:
+      return `Sending Record to ${hostName}…`;
     case CODEX_VOICE_START_ACTION:
       return `Sending the configured Codex voice hotkey to ${hostName}…`;
     case CODEX_VOICE_START_FOREGROUND_ACTION:
@@ -142,6 +109,8 @@ export function codexVoiceResultNotice(
 ) {
   if (status === 'sent') {
     switch (action) {
+      case CODEX_VOICE_RECORD_ACTION:
+        return 'Record shortcut sent. Voice session status is not confirmed.';
       case CODEX_VOICE_START_ACTION:
         return 'Configured Codex voice hotkey sent. Voice session status is not confirmed.';
       case CODEX_VOICE_START_FOREGROUND_ACTION:
@@ -152,6 +121,8 @@ export function codexVoiceResultNotice(
         return 'Mute shortcut sent. Microphone state is not confirmed.';
     }
   }
+  if (message) return message;
+  if (action === CODEX_VOICE_RECORD_ACTION) return 'The Host could not dispatch Record.';
   if (message?.toLowerCase().includes('foreground')) {
     return 'Blocked: focus Codex and try again.';
   }

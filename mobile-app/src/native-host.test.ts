@@ -26,5 +26,5 @@ test('send and Enter is one text message gated by the Host textSubmit capability
 
 test('native authorization uses the same message and submission semantics as Rust', () => {
   assert.deepEqual(JSON.parse(serializeMessage({ type: 'authorize', password: 'fixture-only' })), fixture.authorization);
-  assert.equal(authorizationResultNotice(fixture.result.status, fixture.result.message), '已提交');
+  assert.equal(authorizationResultNotice(fixture.result.status, fixture.result.message), 'Submitted');
 });
