@@ -9,6 +9,8 @@ pub const PROTOCOL_VERSION: u16 = 2;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type")]
 pub enum ClientMessage {
+    #[serde(rename = "clientInfo")]
+    ClientInfo { name: String },
     #[serde(rename = "move")]
     Move { dx: f64, dy: f64 },
     #[serde(rename = "wheel")]
@@ -44,8 +46,12 @@ fn default_click_count() -> u8 {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
 pub enum ServerMessage {
+    #[serde(rename = "disconnected")]
+    Disconnected { message: String },
     #[serde(rename = "ready")]
     Ready {
+        #[serde(rename = "connectionManagement")]
+        connection_management: bool,
         host: String,
         time: u64,
         #[serde(rename = "protocolVersion")]
@@ -72,6 +78,7 @@ pub enum ServerMessage {
 impl ServerMessage {
     pub fn ready(host: String, contract: HostContract) -> Self {
         Self::Ready {
+            connection_management: true,
             host,
             time: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

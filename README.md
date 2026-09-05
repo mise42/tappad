@@ -56,6 +56,9 @@ This installs the headless Host as a systemd user service and enables the
 TapPad Quickshell widget. Run `./uninstall.sh` from the extracted release to
 remove the service, binary, and plugin; pairing settings are intentionally kept.
 
+Omarchy keyboard text injection uses the installed `ydotool`/`ydotoold` path.
+Text is passed through stdin, never command arguments or the clipboard.
+
 ## Development
 
 Current checks:

@@ -8,6 +8,7 @@ BarWidget {
   id: root
   moduleName: "io.miselabs.tappad"
 
+  property int clientCount: 0
   property bool hostRunning: false
   property string statusError: ""
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened : false
@@ -56,6 +57,7 @@ BarWidget {
         try {
           const state = JSON.parse(text)
           root.hostRunning = state.serverStatus.running === true
+          root.clientCount = (state.clients || []).length
           root.statusError = ""
         } catch (error) {
           root.hostRunning = false
@@ -97,7 +99,7 @@ BarWidget {
     text: "󰌌"
     labelVisible: true
     foreground: root.hostRunning ? (root.bar ? root.bar.foreground : Color.foreground) : Color.muted
-    tooltipText: root.hostRunning ? "TapPad is running" : "TapPad is stopped"
+    tooltipText: root.hostRunning ? "TapPad · " + root.clientCount + " connected" : "TapPad is stopped"
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.RightButton && root.bar) root.bar.run("tappad-host restart")
       else root.toggle()

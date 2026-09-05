@@ -4,12 +4,12 @@ use axum::{
     Json, Router,
     body::Body,
     extract::{
-        Query, State,
+        ConnectInfo, Query, State,
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
     },
-    http::{StatusCode, Uri, header},
+    http::{HeaderMap, StatusCode, Uri, header},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
 };
 use include_dir::{Dir, include_dir};
 use log::{info, warn};
@@ -28,6 +28,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     actions::{DesktopActions, action_capabilities, platform_actions},
     authorization,
+    connections::Connections,
     diagnostics::{record_action_attempt, record_action_failure, record_action_success},
     discovery,
     host_contract::current_host_contract,
@@ -52,6 +53,7 @@ pub struct BackendRuntime {
     actions: DesktopActions,
     router: Mutex<ProtocolRouter>,
     settings: RuntimeSettings,
+    connections: Mutex<Connections>,
 }
 
 pub struct RunningBackend {
@@ -67,6 +69,7 @@ impl BackendRuntime {
             actions: platform_actions(),
             router: Mutex::new(ProtocolRouter::new()),
             settings,
+            connections: Mutex::new(Connections::default()),
         })
     }
 
@@ -94,14 +97,19 @@ pub fn spawn(
     let app = Router::new()
         .route("/ws", get(ws_handler))
         .route("/api/host-state", get(api_host_state))
+        .route("/api/local-state", get(api_local_state))
+        .route("/api/disconnect", post(api_disconnect))
         .fallback(static_fallback)
         .with_state(state);
 
     let task = tokio::spawn(async move {
         info!("TapPad backend listening on http://{addr}");
-        let result = axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown_for_task.cancelled_owned())
-            .await;
+        let result = axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown_for_task.cancelled_owned())
+        .await;
 
         if let Err(error) = result {
             warn!("TapPad backend stopped with error: {error}");
@@ -130,6 +138,59 @@ async fn api_host_state(State(state): State<Arc<BackendRuntime>>) -> Json<HostSu
     Json(host_state)
 }
 
+fn local_authorized(peer: SocketAddr, headers: &HeaderMap, token: &str) -> bool {
+    peer.ip().is_loopback()
+        && headers
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            == Some(format!("Bearer {token}").as_str())
+}
+async fn api_local_state(
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    State(state): State<Arc<BackendRuntime>>,
+) -> Response {
+    if !local_authorized(peer, &headers, &state.settings.token) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let mut value = serde_json::to_value(host_surface_state(
+        state.settings(),
+        true,
+        None,
+        false,
+        true,
+        None,
+    ))
+    .unwrap();
+    let connections = state.connections.lock().await;
+    value["clients"] =
+        serde_json::to_value(connections.clients.values().collect::<Vec<_>>()).unwrap();
+    value["rejectedPairings"] = connections.rejected_pairings.into();
+    value["lastRejectedAt"] = serde_json::json!(connections.last_rejected_at);
+    Json(value).into_response()
+}
+#[derive(serde::Deserialize)]
+struct DisconnectQuery {
+    id: String,
+}
+async fn api_disconnect(
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(query): Query<DisconnectQuery>,
+    State(state): State<Arc<BackendRuntime>>,
+) -> Response {
+    if !local_authorized(peer, &headers, &state.settings.token) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let connections = state.connections.lock().await;
+    if let Some(client) = connections.clients.get(&query.id) {
+        client.disconnect.cancel();
+        Json(serde_json::json!({"disconnected": true, "pairingRevoked": false})).into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    }
+}
+
 async fn ws_handler(
     ws: WebSocketUpgrade,
     Query(query): Query<WsQuery>,
@@ -137,7 +198,10 @@ async fn ws_handler(
 ) -> impl IntoResponse {
     match &query.token {
         Some(provided) if provided == &state.settings.token => {}
-        _ => return (StatusCode::FORBIDDEN, "Forbidden").into_response(),
+        _ => {
+            state.connections.lock().await.reject();
+            return (StatusCode::FORBIDDEN, "Forbidden").into_response();
+        }
     }
 
     let client_id = format!("client-{}", CLIENT_COUNTER.fetch_add(1, Ordering::SeqCst));
@@ -147,6 +211,7 @@ async fn ws_handler(
 async fn handle_socket(mut socket: WebSocket, state: Arc<BackendRuntime>, client_id: String) {
     info!("client connected: {client_id}");
     let mut client_input = ClientInputState::default();
+    let disconnect = state.connections.lock().await.add(client_id.clone());
 
     let ready = ServerMessage::ready(state.settings.hostname.clone(), current_host_contract());
     let _ = socket
@@ -155,7 +220,15 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<BackendRuntime>, client
         ))
         .await;
 
-    while let Some(Ok(message)) = socket.recv().await {
+    loop {
+        let message = tokio::select! {
+            _ = disconnect.cancelled() => {
+                send_server_message(&mut socket, ServerMessage::Disconnected { message: "Host disconnected this session. Tap Reconnect to connect again; pairing is retained.".into() }).await;
+                let _ = socket.send(WsMessage::Close(None)).await;
+                break;
+            },
+            message = socket.recv() => match message { Some(Ok(message)) => message, _ => break },
+        };
         let text = match message {
             WsMessage::Text(text) => text,
             _ => continue,
@@ -178,6 +251,11 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<BackendRuntime>, client
             }
         };
 
+        if let ClientMessage::ClientInfo { name } = message {
+            state.connections.lock().await.identify(&client_id, &name);
+            continue;
+        }
+        state.connections.lock().await.input(&client_id);
         let effect = state.router.lock().await.route(&client_id, message);
         if let Some(effect) = effect
             && let Some(error) =
@@ -188,6 +266,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<BackendRuntime>, client
         }
     }
 
+    state.connections.lock().await.clients.remove(&client_id);
     release_client_input(&state.input, &client_id, &mut client_input).await;
     info!("client disconnected: {client_id}");
 }
@@ -600,6 +679,31 @@ mod tests {
         BackendEffect, ClientInputState, PASTE_TEXT_LIMIT_BYTES, mobile_asset_path,
         truncate_to_char_boundary,
     };
+    use super::{HeaderMap, header, local_authorized};
+
+    #[test]
+    fn local_controls_require_loopback_and_pairing_credential() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            "Bearer fixture-only".parse().unwrap(),
+        );
+        assert!(local_authorized(
+            "127.0.0.1:1234".parse().unwrap(),
+            &headers,
+            "fixture-only"
+        ));
+        assert!(!local_authorized(
+            "192.168.100.184:1234".parse().unwrap(),
+            &headers,
+            "fixture-only"
+        ));
+        assert!(!local_authorized(
+            "127.0.0.1:1234".parse().unwrap(),
+            &HeaderMap::new(),
+            "fixture-only"
+        ));
+    }
 
     #[test]
     fn mobile_asset_path_rejects_traversal() {

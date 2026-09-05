@@ -57,3 +57,20 @@ process arguments.
 
 The Quickshell plugin is the only maintained desktop UI. Tauri tray, AppKit,
 and Windows desktop surfaces are outside the product. The native Expo phone surface remains maintained.
+
+## Current connection panel
+
+The Shell Surface uses Omarchy's shared Panel, KeyboardPanel, PanelHero and
+PanelActionButton components, anchored to its top-bar button. It follows theme
+colors/fonts and closes with Escape or an outside click. The default view shows
+Host identity/running state, LAN address, active clients, self-reported client
+names and received input-message counts. Counts include key cleanup messages;
+they are not gesture counts or latency measurements. No device name is inferred.
+
+“连接新手机” expands the QR code on demand. Closing the panel clears its QR data.
+A disconnect action ends only the selected live WebSocket session, releasing
+held input. It does not revoke or forget the pairing. Updated native clients
+wait for manual Reconnect after this action; older clients may auto-reconnect.
+Local CLI status/disconnect use loopback-only HTTP routes with the stored pairing
+credential in an HTTP header, never in command arguments. Client names are not
+part of the public LAN status response.

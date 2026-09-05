@@ -53,3 +53,12 @@ bytes, only while an `omarchy-polkit` layer is visible. The reply is an
 does not attest to successful authentication. `/api/host-state.authorization`
 exposes `supported` and `requestActive`, never the password. Raw protocol payloads
 and parser error values must not be logged, including under verbose `RUST_LOG`.
+
+### Native client identity and session disconnect
+
+A `ready` message advertises `connectionManagement: true` when the Host accepts
+`clientInfo` with a self-reported `name`. Clients must gate this additive message
+on the advertisement for compatibility with older Hosts. Names are bounded,
+control characters are removed, and names are display metadata, not identity proof.
+A `disconnected` message announces a user-requested session close. Updated native
+clients stop automatic retries until the user taps Reconnect. Pairing is retained.

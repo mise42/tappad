@@ -124,7 +124,31 @@ impl InputDevice {
     }
 
     pub fn type_text(&mut self, text: &str) -> io::Result<()> {
-        self.with_reconnect_on_stale_backend(|enigo| enigo.text(text).map_err(to_io_error))
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        if text.is_empty() {
+            return Ok(());
+        }
+        // Omarchy's virtual keyboard path can lose shifted characters with
+        // enigo.text(). Type via the existing uinput daemon, never argv/clipboard.
+        let mut child = Command::new("ydotool")
+            .args(["type", "--file", "-"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let write_result = child
+            .stdin
+            .take()
+            .ok_or_else(|| io::Error::other("typing pipe unavailable"))?
+            .write_all(text.as_bytes());
+        let status = child.wait()?;
+        write_result?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(io::Error::other("Omarchy typing failed; check ydotoold"))
+        }
     }
 
     #[allow(dead_code)]

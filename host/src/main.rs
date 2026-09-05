@@ -3,6 +3,7 @@
 mod actions;
 mod authorization;
 mod backend;
+mod connections;
 mod diagnostics;
 mod discovery;
 mod host_contract;
@@ -65,6 +66,18 @@ async fn execute(args: Vec<String>) -> Result<(), Box<dyn Error + Send + Sync>> 
         "status" => print_state(&data_dir, false),
         "pairing" => print_state(&data_dir, true),
         "reset-pairing" => reset_pairing(&data_dir),
+        "disconnect" => {
+            let id = args
+                .get(1)
+                .ok_or("disconnect requires a current client id")?;
+            if !id.starts_with("client-") || !id[7..].chars().all(|c| c.is_ascii_digit()) {
+                return Err("invalid client id".into());
+            }
+            let settings = RuntimeSettings::from_store(&data_dir, true)?;
+            let result = local_request(&settings, "POST", &format!("/api/disconnect?id={id}"))?;
+            println!("{}", result);
+            Ok(())
+        }
         "start" | "stop" | "restart" => control_service(command),
         "help" | "--help" | "-h" => {
             print_help();
@@ -91,6 +104,12 @@ fn print_state(
     include_pairing: bool,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let settings = RuntimeSettings::from_store(data_dir, true)?;
+    if !include_pairing {
+        if let Ok(state) = local_request(&settings, "GET", "/api/local-state") {
+            println!("{state}");
+            return Ok(());
+        }
+    }
     let running = host_is_running(settings.port);
     let (input_ready, input_error) = diagnostics::input_device_probe();
     let state = host_surface_state(
@@ -103,6 +122,33 @@ fn print_state(
     );
     println!("{}", serde_json::to_string(&state)?);
     Ok(())
+}
+
+fn local_request(
+    settings: &RuntimeSettings,
+    method: &str,
+    path: &str,
+) -> Result<serde_json::Value, Box<dyn Error + Send + Sync>> {
+    use std::io::{Read, Write};
+    let mut stream = TcpStream::connect_timeout(
+        &SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), settings.port),
+        Duration::from_secs(2),
+    )?;
+    stream.set_read_timeout(Some(Duration::from_secs(3)))?;
+    write!(
+        stream,
+        "{method} {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+        settings.token
+    )?;
+    let mut response = String::new();
+    stream.take(1024 * 1024).read_to_string(&mut response)?;
+    let (head, body) = response
+        .split_once("\r\n\r\n")
+        .ok_or("invalid Host response")?;
+    if !head.starts_with("HTTP/1.1 200") {
+        return Err("Host rejected local request".into());
+    }
+    Ok(serde_json::from_str(body)?)
 }
 
 fn reset_pairing(data_dir: &std::path::Path) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -150,6 +196,6 @@ fn data_dir() -> io::Result<PathBuf> {
 
 fn print_help() {
     println!(
-        "TapPad Host\n\nUsage: tappad-host [run|status|pairing|reset-pairing|start|stop|restart]"
+        "TapPad Host\n\nUsage: tappad-host [run|status|pairing|reset-pairing|start|stop|restart|disconnect <client-id>]"
     );
 }

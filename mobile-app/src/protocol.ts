@@ -1,4 +1,5 @@
 export type TapPadMessage =
+  | { type: 'clientInfo'; name: string }
   | { type: 'move'; dx: number; dy: number }
   | { type: 'wheel'; dy: number }
   | { type: 'click'; button: 'left' | 'right' | 'middle'; clickCount?: number }
@@ -64,6 +65,7 @@ export type InputCapabilities = {
 };
 
 export type ServerMessage = {
+  connectionManagement?: boolean;
   type?: string;
   protocolVersion?: number;
   inputCapabilities?: InputCapabilities;

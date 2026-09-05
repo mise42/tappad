@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
+  Platform,
   Keyboard,
   type KeyboardEvent,
   Modal,
@@ -197,6 +198,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
+  const hostDisconnectedRef = useRef(false);
   const capabilityRequestRef = useRef(0);
   const mountedRef = useRef(true);
   const heldKeysRef = useRef(new Set<string>());
@@ -261,7 +263,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
   }, [host, port]);
 
   const connectSocket = useCallback(() => {
-    if (!mountedRef.current) return;
+    if (!mountedRef.current || hostDisconnectedRef.current) return;
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
     releaseAll();
     socketRef.current?.close();
@@ -272,8 +274,15 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
     const socket = new WebSocket(socketUrl(host, port, token));
     socketRef.current = socket;
     socket.onmessage = (event) => {
+      if (socketRef.current !== socket) return;
       try {
         const message = JSON.parse(String(event.data)) as ServerMessage;
+        if (message.type === 'disconnected') {
+          hostDisconnectedRef.current = true;
+          setNotice('Host 已断开当前连接；配对仍保留，点 Reconnect 可重新连接。');
+          socket.close();
+          return;
+        }
         if (message.type === 'error') {
           setNotice(message.message || 'The host rejected an input message.');
           return;
@@ -294,6 +303,9 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
           return;
         }
         if (message.type !== 'ready') return;
+        if (message.connectionManagement) {
+          socket.send(serializeMessage({ type: 'clientInfo', name: Platform.OS === 'android' ? Platform.constants.Model : 'TapPad on iOS' }));
+        }
         reconnectAttemptRef.current = 0;
         setConnectionState('connected');
         setConnectionError(null);
@@ -311,6 +323,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
       }
     };
     socket.onerror = () => {
+      if (socketRef.current !== socket) return;
       if (!mountedRef.current) return;
       setAuthorizationSubmitting(false);
       setConnectionState('error');
@@ -323,6 +336,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
       setPointerButtonSupported(false);
       setAuthorizationSubmitting(false);
       setConnectionState('disconnected');
+      if (hostDisconnectedRef.current) return;
       const delay = Math.min(1_000 * 2 ** reconnectAttemptRef.current, 8_000);
       reconnectAttemptRef.current += 1;
       reconnectTimerRef.current = setTimeout(connectSocket, delay);
@@ -526,7 +540,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Reconnect"
-          onPress={connectSocket}
+          onPress={() => { hostDisconnectedRef.current = false; connectSocket(); }}
           style={({ pressed }) => [styles.iconButton, styles.reconnectButton, pressed && styles.controlPressed]}
         >
           <MaterialCommunityIcons name="refresh" color={theme.color.textStrong} size={21} />
