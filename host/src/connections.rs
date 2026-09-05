@@ -37,7 +37,7 @@ impl Connections {
             id.clone(),
             ClientSummary {
                 id,
-                name: "未报告名称的客户端".into(),
+                name: "Unnamed client".into(),
                 connected_at: now_ms(),
                 last_input_at: None,
                 input_messages: 0,

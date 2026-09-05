@@ -441,6 +441,7 @@ async fn apply_backend_effect(
                     format!("Authorization input failed: {error}"),
                 ));
             }
+            info!("authorization input submitted for {client_id}");
             return Some(ServerMessage::authorization_result(
                 "submitted",
                 "Authorization input was submitted to the visible Omarchy request.",
