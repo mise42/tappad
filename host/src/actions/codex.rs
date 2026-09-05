@@ -337,14 +337,21 @@ fn resolve_effective_app_binding(
     command: &str,
 ) -> Result<StartBinding, ProbeError> {
     verify_codex_installed(paths)?;
-    let default_binding = installed_app_default_binding(paths, command)?;
+    let default_binding = installed_app_default_binding(paths, command);
+    // A registered app command may have no default on Linux. A user override
+    // still applies; retain failures for missing/ambiguous command metadata.
+    if let Err(error) = &default_binding {
+        if error.reason_code != "codex_app_binding_missing" {
+            return Err(error.clone());
+        }
+    }
     let bindings = read_keybindings(&paths.keybindings)?;
     let matching_bindings = bindings
         .into_iter()
         .filter(|binding| binding.command == command)
         .collect::<Vec<_>>();
     let accelerator = match matching_bindings.as_slice() {
-        [] => default_binding,
+        [] => default_binding?,
         [binding] => binding.key.clone(),
         _ => {
             return Err(ProbeError {
@@ -785,6 +792,32 @@ mod tests {
                 accelerator: "F5".to_string(),
                 input_codes: vec!["F5".to_string()],
             })
+        );
+    }
+
+    #[test]
+    fn foreground_override_works_when_linux_has_no_default() {
+        let (temp, mut paths) = fixture(
+            json!([{"command": START_FOREGROUND_VOICE_COMMAND, "key": "Ctrl+Shift+V"}]),
+            true,
+        );
+        install_metadata_archive(
+            &temp,
+            &mut paths,
+            "{id:`composer.startVoiceMode`,shortcutScope:`app`,electron:{platformDefaultKeybindings:{macOS:[{key:`Ctrl+Shift+V`}],default:[]}}}",
+        );
+        assert_eq!(
+            resolve_effective_app_binding(&paths, START_FOREGROUND_VOICE_COMMAND)
+                .expect("configured override must work without a Linux default")
+                .accelerator,
+            "Ctrl+Shift+V"
+        );
+        fs::write(&paths.keybindings, "[]").expect("remove override");
+        assert_eq!(
+            resolve_effective_app_binding(&paths, START_FOREGROUND_VOICE_COMMAND)
+                .expect_err("no configured or default shortcut")
+                .reason_code,
+            "codex_app_binding_missing"
         );
     }
 
