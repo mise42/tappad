@@ -19,7 +19,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PinnedWebSocket, randomNonce } from '../modules/tappad-pinned-socket';
-import { createLatestFrameCoalescer } from './frameCoalescer';
+import { createWheelMotion } from './wheelMotion';
 import { bindingAuthorization, verifyHostProof } from './host-binding';
 import {
   AUTHORIZATION_RETRY_COOLDOWN_MS,
@@ -754,9 +754,10 @@ function PadPanel({
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latchedModifiersRef = useRef<string[]>([]);
-  const wheelSender = useMemo(() => createLatestFrameCoalescer<number>(
+  const wheel = useMemo(() => createWheelMotion(
     (dy) => send({ type: 'wheel', dy }),
     { request: requestAnimationFrame, cancel: cancelAnimationFrame },
+    () => performance.now(),
   ), [send]);
   // Edge-to-edge Android windows keep their full height while the IME overlays them.
   const keyboardInset = keyboardInsetFor(Platform.OS, keyboardHeight, bottomSafeArea);
@@ -843,9 +844,11 @@ function PadPanel({
 
   const endGesture = useCallback((canceled: boolean) => {
     clearHold();
-    wheelSender.cancel();
     const gesture = gestureRef.current;
     gestureRef.current = null;
+    // A scroll coasts on after the fingers lift; one that switched to the pointer already started its coast.
+    if (canceled) wheel.stop();
+    else if (gesture?.mode === 'scroll') wheel.release();
     if (!gesture) return;
 
     if (gesture.mode === 'drag') {
@@ -869,15 +872,15 @@ function PadPanel({
       pendingTapTimerRef.current = null;
       click('left', 1);
     }, DOUBLE_TAP_WINDOW_MS);
-  }, [clearHold, click, endDrag, settleOwedClick, wheelSender]);
+  }, [clearHold, click, endDrag, settleOwedClick, wheel]);
 
   useEffect(() => () => {
     clearHold();
-    wheelSender.cancel();
+    wheel.stop();
     if (pendingTapTimerRef.current) clearTimeout(pendingTapTimerRef.current);
     if (gestureRef.current?.mode === 'drag') releasePointerButton('left');
     releaseLatched();
-  }, [clearHold, releaseLatched, releasePointerButton, wheelSender]);
+  }, [clearHold, releaseLatched, releasePointerButton, wheel]);
 
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -892,6 +895,8 @@ function PadPanel({
       if (pendingTapTimerRef.current) clearTimeout(pendingTapTimerRef.current);
       pendingTapTimerRef.current = null;
       const gesture = beginGesture(point, Date.now(), afterTap);
+      // A touch that stops a coasting scroll is not a tap, so it cannot click whatever scrolled under the pointer.
+      if (wheel.stop()) gesture.moved = true;
       gestureRef.current = gesture;
       clearHold();
       if (!afterTap) return;
@@ -928,14 +933,15 @@ function PadPanel({
         }
         const dy = next.y - gesture.last.y;
         recordPosition(gesture, next);
-        if (Math.abs(dy) > 0.5) wheelSender.push(-dy * 0.25);
+        wheel.push(-dy * 0.25);
         return;
       }
 
       const next = points[0];
       if (!next) return;
       if (gesture.mode === 'scroll') {
-        wheelSender.cancel();
+        // Fingers rarely lift together; the first one lifting ends the scroll.
+        wheel.release();
         gesture.mode = 'pointer';
         gesture.anchor = next;
         gesture.last = next;
@@ -961,7 +967,7 @@ function PadPanel({
     endGesture,
     send,
     settleOwedClick,
-    wheelSender,
+    wheel,
   ]);
 
   const sendText = useCallback((pressEnter: boolean) => {
