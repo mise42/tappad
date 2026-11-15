@@ -40,9 +40,12 @@ import {
 import {
   beginGesture,
   centroid,
-  LONG_PRESS_DELAY_MS,
-  shouldBeginWindowMode,
+  DOUBLE_TAP_WINDOW_MS,
+  recordPosition,
+  shouldBeginDrag,
+  shouldRightClick,
   shouldTap,
+  TAP_MAX_DURATION_MS,
   type GestureState,
   type Point,
 } from './gestureState';
@@ -714,16 +717,17 @@ function PadPanel({
   setNotice,
 }: PadProps) {
   const [text, setText] = useState('');
-  const [windowMode, setWindowMode] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [latchedModifiers, setLatchedModifiers] = useState<string[]>([]);
   const [keyboardScreenY, setKeyboardScreenY] = useState<number | null>(
     () => Keyboard.metrics()?.screenY ?? null,
   );
   const { height: windowHeight } = useWindowDimensions();
   const { bottom: bottomSafeArea } = useSafeAreaInsets();
   const gestureRef = useRef<GestureState | null>(null);
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastTapAtRef = useRef(0);
+  const latchedModifiersRef = useRef<string[]>([]);
   const wheelSender = useMemo(() => createLatestFrameCoalescer<number>(
     (dy) => send({ type: 'wheel', dy }),
     { request: requestAnimationFrame, cancel: cancelAnimationFrame },
@@ -745,52 +749,109 @@ function PadPanel({
     };
   }, []);
 
-  const clearLongPress = useCallback(() => {
-    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
-    longPressTimerRef.current = null;
+  const clearHold = useCallback(() => {
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = null;
   }, []);
 
-  const endWindowMode = useCallback(() => {
+  // React Native hands a second finger to the view that already owns the first touch, so a modifier held on the
+  // key bar cannot coexist with a pad touch. The bar's modifiers latch instead and apply to the next click,
+  // drag, or quick key, then release.
+  const releaseLatched = useCallback(() => {
+    for (const code of latchedModifiersRef.current) releaseKey(code);
+    latchedModifiersRef.current = [];
+    setLatchedModifiers([]);
+  }, [releaseKey]);
+
+  const toggleModifier = useCallback((code: string) => {
+    const latched = latchedModifiersRef.current;
+    if (latched.includes(code)) {
+      releaseKey(code);
+      latchedModifiersRef.current = latched.filter((held) => held !== code);
+    } else if (pressKey(code)) {
+      latchedModifiersRef.current = [...latched, code];
+    }
+    setLatchedModifiers(latchedModifiersRef.current);
+  }, [pressKey, releaseKey]);
+
+  const releaseQuickKey = useCallback((code: string) => {
+    releaseKey(code);
+    releaseLatched();
+  }, [releaseKey, releaseLatched]);
+
+  useEffect(() => {
+    // The control surface already released every held key when the connection dropped.
+    if (connected) return;
+    latchedModifiersRef.current = [];
+    setLatchedModifiers([]);
+  }, [connected]);
+
+  const click = useCallback((button: PointerButton, clickCount: number) => {
+    send({ type: 'click', button, clickCount });
+    releaseLatched();
+  }, [releaseLatched, send]);
+
+  // A gesture that starts right after a tap owes that tap's single click unless it becomes a double click or a drag.
+  const settleOwedClick = useCallback((gesture: GestureState) => {
+    if (!gesture.afterTap) return;
+    gesture.afterTap = false;
+    click('left', 1);
+  }, [click]);
+
+  const beginDrag = useCallback((gesture: GestureState) => {
+    if (!windowDragSupported) setNotice('Drag requires a TapPad Host with pointer hold support.');
+    if (!windowDragSupported || !pressPointerButton('left')) {
+      settleOwedClick(gesture);
+      return;
+    }
+    gesture.afterTap = false;
+    gesture.mode = 'drag';
+    setDragging(true);
+  }, [pressPointerButton, setNotice, settleOwedClick, windowDragSupported]);
+
+  const endDrag = useCallback(() => {
     releasePointerButton('left');
-    releaseKey('MetaLeft');
-    setWindowMode(false);
-  }, [releaseKey, releasePointerButton]);
+    releaseLatched();
+    setDragging(false);
+  }, [releaseLatched, releasePointerButton]);
 
   const endGesture = useCallback((canceled: boolean) => {
-    clearLongPress();
+    clearHold();
     wheelSender.cancel();
     const gesture = gestureRef.current;
     gestureRef.current = null;
     if (!gesture) return;
 
-    if (gesture.mode === 'window') {
-      endWindowMode();
+    if (gesture.mode === 'drag') {
+      endDrag();
       return;
     }
-    if (canceled || !shouldTap(gesture, Date.now())) return;
-
     const now = Date.now();
-    if (now - lastTapAtRef.current < 320) {
-      if (pendingTapTimerRef.current) clearTimeout(pendingTapTimerRef.current);
-      pendingTapTimerRef.current = null;
-      lastTapAtRef.current = 0;
-      send({ type: 'click', button: 'left', clickCount: 2 });
+    if (!canceled && shouldRightClick(gesture, now)) {
+      click('right', 1);
       return;
     }
-    lastTapAtRef.current = now;
+    if (canceled || !shouldTap(gesture, now)) {
+      settleOwedClick(gesture);
+      return;
+    }
+    if (gesture.afterTap) {
+      click('left', 2);
+      return;
+    }
     pendingTapTimerRef.current = setTimeout(() => {
-      send({ type: 'click', button: 'left', clickCount: 1 });
       pendingTapTimerRef.current = null;
-      lastTapAtRef.current = 0;
-    }, 320);
-  }, [clearLongPress, endWindowMode, send, wheelSender]);
+      click('left', 1);
+    }, DOUBLE_TAP_WINDOW_MS);
+  }, [clearHold, click, endDrag, settleOwedClick, wheelSender]);
 
   useEffect(() => () => {
-    clearLongPress();
+    clearHold();
     wheelSender.cancel();
     if (pendingTapTimerRef.current) clearTimeout(pendingTapTimerRef.current);
-    if (gestureRef.current?.mode === 'window') endWindowMode();
-  }, [clearLongPress, endWindowMode, wheelSender]);
+    if (gestureRef.current?.mode === 'drag') releasePointerButton('left');
+    releaseLatched();
+  }, [clearHold, releaseLatched, releasePointerButton, wheelSender]);
 
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -800,23 +861,27 @@ function PadPanel({
     onPanResponderGrant: (event) => {
       const points = pointsFromTouches(event.nativeEvent.touches);
       const point = points[0] ?? { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
-      gestureRef.current = beginGesture(point, Date.now());
-      clearLongPress();
-      longPressTimerRef.current = setTimeout(() => {
-        const gesture = gestureRef.current;
-        if (!gesture || !shouldBeginWindowMode(gesture)) return;
-        if (!windowDragSupported) {
-          setNotice('Window drag requires a TapPad Host with pointer hold support.');
-          return;
-        }
-        if (!pressKey('MetaLeft')) return;
-        if (!pressPointerButton('left')) {
-          releaseKey('MetaLeft');
-          return;
-        }
-        gesture.mode = 'window';
-        setWindowMode(true);
-      }, LONG_PRESS_DELAY_MS);
+      // A touch while the last tap's click is still deferred continues that tap as a double click or a drag.
+      const afterTap = pendingTapTimerRef.current !== null;
+      if (pendingTapTimerRef.current) clearTimeout(pendingTapTimerRef.current);
+      pendingTapTimerRef.current = null;
+      const gesture = beginGesture(point, Date.now(), afterTap);
+      gestureRef.current = gesture;
+      clearHold();
+      if (!afterTap) return;
+      holdTimerRef.current = setTimeout(() => {
+        holdTimerRef.current = null;
+        if (gestureRef.current === gesture && shouldBeginDrag(gesture)) beginDrag(gesture);
+      }, TAP_MAX_DURATION_MS);
+    },
+    onPanResponderStart: (event) => {
+      // A second finger landing rules out tap-and-drag before the hold timer or the next move can start one.
+      const gesture = gestureRef.current;
+      if (!gesture) return;
+      gesture.maxTouches = Math.max(gesture.maxTouches, event.nativeEvent.touches.length);
+      if (gesture.maxTouches < 2) return;
+      clearHold();
+      settleOwedClick(gesture);
     },
     onPanResponderMove: (event) => {
       const gesture = gestureRef.current;
@@ -825,18 +890,18 @@ function PadPanel({
       gesture.maxTouches = Math.max(gesture.maxTouches, points.length);
 
       if (points.length >= 2) {
-        clearLongPress();
-        if (gesture.mode === 'window') {
-          endWindowMode();
-        }
+        clearHold();
+        settleOwedClick(gesture);
+        if (gesture.mode === 'drag') endDrag();
         const next = centroid(points.slice(0, 2));
         if (gesture.mode !== 'scroll') {
           gesture.mode = 'scroll';
+          gesture.anchor = next;
           gesture.last = next;
           return;
         }
         const dy = next.y - gesture.last.y;
-        gesture.last = next;
+        recordPosition(gesture, next);
         if (Math.abs(dy) > 0.5) wheelSender.push(-dy * 0.25);
         return;
       }
@@ -846,13 +911,17 @@ function PadPanel({
       if (gesture.mode === 'scroll') {
         wheelSender.cancel();
         gesture.mode = 'pointer';
+        gesture.anchor = next;
         gesture.last = next;
         return;
       }
       const dx = next.x - gesture.last.x;
       const dy = next.y - gesture.last.y;
-      gesture.last = next;
-      if (!shouldBeginWindowMode(gesture)) clearLongPress();
+      recordPosition(gesture, next);
+      if (gesture.moved && shouldBeginDrag(gesture)) {
+        clearHold();
+        beginDrag(gesture);
+      }
       if (Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) {
         send({ type: 'move', dx: dx * 1.25, dy: dy * 1.25 });
       }
@@ -860,38 +929,44 @@ function PadPanel({
     onPanResponderRelease: () => endGesture(false),
     onPanResponderTerminate: () => endGesture(true),
   }), [
-    clearLongPress,
+    beginDrag,
+    clearHold,
+    endDrag,
     endGesture,
-    endWindowMode,
-    pressKey,
-    pressPointerButton,
-    releaseKey,
     send,
-    setNotice,
+    settleOwedClick,
     wheelSender,
-    windowDragSupported,
   ]);
 
   const sendText = useCallback(() => {
     if (!text.trim()) return;
+    // A latched Super or Ctrl would turn typed text into shortcuts.
+    releaseLatched();
     if (!send({ type: 'text', value: text })) {
       setNotice('Text was not sent because TapPad is disconnected.');
       return;
     }
     setText('');
-  }, [send, setNotice, text]);
+  }, [releaseLatched, send, setNotice, text]);
 
+  const superLatched = latchedModifiers.includes('MetaLeft');
   return (
     <View style={[styles.padPanel, keyboardInset > 0 && { paddingBottom: keyboardInset + theme.space.sm }]}>
       <View
         {...panResponder.panHandlers}
         accessibilityRole="adjustable"
-        accessibilityLabel="Touchpad. Move one finger for pointer, two fingers to scroll, long press to move a window."
-        style={[styles.touchPad, !connected && styles.controlDisabled, windowMode && styles.touchPadWindowMode]}
+        accessibilityLabel="Touchpad. Move one finger for pointer, tap to click, tap then hold to drag, two fingers to scroll, two-finger tap to right click."
+        style={[styles.touchPad, !connected && styles.controlDisabled, dragging && styles.touchPadDragging]}
       >
         <View style={styles.padGuide}>
-          <Text style={styles.padHint}>{windowMode ? 'Keep holding and move' : 'Move · Tap · Two-finger scroll'}</Text>
-          <Text style={styles.padLongHint}>{windowMode ? 'Release to exit' : 'Long press to move a window'}</Text>
+          <Text style={styles.padHint}>{dragging ? 'Dragging' : 'Move · Tap · Two-finger scroll'}</Text>
+          <Text style={styles.padLongHint}>
+            {dragging
+              ? 'Release to drop'
+              : superLatched
+                ? 'Super held: tap, then hold to move a window'
+                : 'Tap, then hold to drag · Two-finger tap: right click'}
+          </Text>
         </View>
       </View>
 
@@ -916,13 +991,33 @@ function PadPanel({
         </Pressable>
       </View>
       <View style={styles.quickKeys}>
-        {[
-          ['Super', 'MetaLeft'], ['Alt', 'AltLeft'], ['Ctrl', 'ControlLeft'], ['Shift', 'ShiftLeft'], ['Enter', 'Enter'], ['⌫', 'Backspace'],
-        ].map(([label, code]) => (
-          <KeyButton key={code} label={label} code={code} onDown={pressKey} onUp={releaseKey} compact />
+        {[['Super', 'MetaLeft'], ['Alt', 'AltLeft'], ['Ctrl', 'ControlLeft'], ['Shift', 'ShiftLeft']].map(([label, code]) => (
+          <LatchKeyButton
+            key={code}
+            label={label}
+            latched={latchedModifiers.includes(code)}
+            onPress={() => toggleModifier(code)}
+          />
+        ))}
+        {[['Enter', 'Enter'], ['⌫', 'Backspace']].map(([label, code]) => (
+          <KeyButton key={code} label={label} code={code} onDown={pressKey} onUp={releaseQuickKey} compact />
         ))}
       </View>
     </View>
+  );
+}
+
+function LatchKeyButton({ label, latched, onPress }: { label: string; latched: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: latched }}
+      onPress={onPress}
+      style={({ pressed }) => [styles.keyButton, styles.keyButtonCompact, (latched || pressed) && styles.keyButtonPressed]}
+    >
+      <Text style={[styles.keyButtonText, latched && styles.keyButtonTextPressed]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -1175,7 +1270,7 @@ const styles = StyleSheet.create({
   noticeText: { color: theme.color.textMuted, fontSize: 12, lineHeight: 17 },
   padPanel: { flex: 1, paddingHorizontal: theme.space.md, paddingBottom: theme.space.sm },
   touchPad: { flex: 1, minHeight: 250, borderRadius: theme.radius.pad, overflow: 'hidden', alignItems: 'center', backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
-  touchPadWindowMode: { borderColor: theme.color.borderStrong, backgroundColor: theme.color.surfacePressed },
+  touchPadDragging: { borderColor: theme.color.borderStrong, backgroundColor: theme.color.surfacePressed },
   controlDisabled: { opacity: 0.58 },
   padGuide: { position: 'absolute', bottom: 15, alignItems: 'center' },
   padHint: { color: theme.color.textMuted, fontSize: 11, fontWeight: '600' },
