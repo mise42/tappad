@@ -267,14 +267,7 @@ fn linux_capabilities(
             "Stop recording",
             "Desktop actions",
             PRODUCT_SUPPORTED,
-            all_commands_status(&[
-                "omarchy",
-                "gpu-screen-recorder",
-                "ffmpeg",
-                "ffprobe",
-                "waybar",
-                "notify-send",
-            ]),
+            recording_stop_status(),
         ),
         capability(
             "open_recordings_folder",
@@ -295,7 +288,7 @@ fn linux_capabilities(
             "App launcher",
             "Desktop actions",
             PRODUCT_SUPPORTED,
-            command_status("walker"),
+            command_status("omarchy-menu"),
         ),
         capability(
             "lock_screen",
@@ -507,6 +500,34 @@ fn webcam_recording_status() -> RuntimeEvidence {
         },
         evidence,
     }
+}
+
+#[cfg(target_os = "linux")]
+fn recording_stop_status() -> RuntimeEvidence {
+    let mut status = all_commands_status(&[
+        "omarchy",
+        "gpu-screen-recorder",
+        "ffmpeg",
+        "ffprobe",
+        "notify-send",
+    ]);
+    // Omarchy 4 refreshes the recording indicator through its Quickshell bar;
+    // Omarchy 3 signals Waybar.
+    match ["omarchy-shell", "waybar"]
+        .into_iter()
+        .find(|command| command_exists(command))
+    {
+        Some(command) => status
+            .evidence
+            .push(format!("found recording indicator: {command}")),
+        None => {
+            status.status = RUNTIME_MISSING_DEPENDENCY;
+            status
+                .evidence
+                .push("missing recording indicator: omarchy-shell or waybar".to_string());
+        }
+    }
+    status
 }
 
 #[cfg(target_os = "linux")]

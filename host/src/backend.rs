@@ -169,15 +169,9 @@ async fn api_local_state(
     if !local_authorized(peer.addr, &headers, &state.settings.token) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let mut value = serde_json::to_value(host_surface_state(
-        state.settings(),
-        true,
-        None,
-        false,
-        true,
-        None,
-    ))
-    .unwrap();
+    let mut host_state = host_surface_state(state.settings(), true, None, false, true, None);
+    host_state.authorization = authorization::current_state().await;
+    let mut value = serde_json::to_value(host_state).unwrap();
     let connections = state.connections.lock().await;
     value["clients"] =
         serde_json::to_value(connections.clients.values().collect::<Vec<_>>()).unwrap();

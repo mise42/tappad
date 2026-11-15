@@ -119,11 +119,28 @@ pub fn persist_settings(data_dir: &Path, settings: &RuntimeSettings) -> io::Resu
         host_id: settings.host_id.clone(),
     };
     let text = serde_json::to_string_pretty(&stored)?;
-    fs::write(settings_path(data_dir), text)
+    write_private(&settings_path(data_dir), &text)
 }
 
 pub fn settings_path(data_dir: &Path) -> PathBuf {
     data_dir.join("settings.json")
+}
+
+/// Writes the settings file, which holds the pairing token, readable only by its owner.
+fn write_private(path: &Path, text: &str) -> io::Result<()> {
+    use std::{
+        io::Write,
+        os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    };
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    // `mode` applies only on creation; tighten a file an older Host left world-readable.
+    file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    file.write_all(text.as_bytes())
 }
 
 fn read_stored_settings(data_dir: &Path) -> io::Result<StoredSettings> {
@@ -134,7 +151,7 @@ fn read_stored_settings(data_dir: &Path) -> io::Result<StoredSettings> {
                 .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
             if settings.host_id.trim().is_empty() {
                 settings.host_id = generate_host_id();
-                fs::write(&path, serde_json::to_string_pretty(&settings)?)?;
+                write_private(&path, &serde_json::to_string_pretty(&settings)?)?;
             }
             let token = normalize_token(settings.token)?;
             validate_port(settings.port)?;
@@ -147,7 +164,7 @@ fn read_stored_settings(data_dir: &Path) -> io::Result<StoredSettings> {
                 host_id: generate_host_id(),
             };
             fs::create_dir_all(data_dir)?;
-            fs::write(&path, serde_json::to_string_pretty(&settings)?)?;
+            write_private(&path, &serde_json::to_string_pretty(&settings)?)?;
             Ok(settings)
         }
         Err(error) => Err(error),
@@ -255,7 +272,13 @@ mod tests {
         assert_eq!(settings.port, 8765);
         assert!(!settings.token.is_empty());
         assert!(!settings.host_id.is_empty());
-        assert!(settings_path(dir.path()).exists());
+        let mode = fs::metadata(settings_path(dir.path()))
+            .expect("settings metadata")
+            .permissions();
+        assert_eq!(
+            std::os::unix::fs::PermissionsExt::mode(&mode) & 0o777,
+            0o600
+        );
     }
 
     #[test]
