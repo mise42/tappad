@@ -129,20 +129,17 @@ impl InputDevice {
         })
     }
 
-    pub fn is_typeable(&self, ch: char) -> bool {
-        ch.is_ascii()
-    }
-
     pub fn type_text(&mut self, text: &str) -> io::Result<()> {
         use std::io::Write;
         use std::process::{Command, Stdio};
         if text.is_empty() {
             return Ok(());
         }
-        // Omarchy's virtual keyboard path can lose shifted characters with
-        // enigo.text(). Type via the existing uinput daemon, never argv/clipboard.
-        let mut child = Command::new("ydotool")
-            .args(["type", "--file", "-"])
+        // Only the authorization password is typed. enigo.text() can lose shifted
+        // characters on Omarchy; wtype ships with Omarchy and types through the same
+        // Wayland virtual keyboard protocol. Pass it on stdin, never argv/clipboard.
+        let mut child = Command::new("wtype")
+            .arg("-")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -157,7 +154,7 @@ impl InputDevice {
         if status.success() {
             Ok(())
         } else {
-            Err(io::Error::other("Omarchy typing failed; check ydotoold"))
+            Err(io::Error::other("Omarchy typing failed; check wtype"))
         }
     }
 
@@ -237,10 +234,6 @@ impl InputDevice {
 
     pub fn key(&mut self, _code_name: &str, _down: bool) -> io::Result<()> {
         Err(unsupported_input_error())
-    }
-
-    pub fn is_typeable(&self, _ch: char) -> bool {
-        false
     }
 
     pub fn type_text(&mut self, _text: &str) -> io::Result<()> {

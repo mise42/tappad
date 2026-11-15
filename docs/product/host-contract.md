@@ -83,9 +83,8 @@ clients stop automatic retries until the user taps Reconnect. Pairing is retaine
 
 ### Text submit
 
-A `text` message may set the additive `submit: true` field to press Enter once
-the text has been typed, or, for text the Host pastes through the clipboard,
-shortly after the paste. `inputCapabilities.textSubmit` advertises support.
-Clients must not set `submit` unless the Host advertises it, because older Hosts
-ignore the field and type the text without Enter. A missing `submit` means
-`false`.
+The Host pastes `text` through the clipboard. A `text` message may set the
+additive `submit: true` field to press Enter shortly after the paste.
+`inputCapabilities.textSubmit` advertises support. Clients must not set `submit`
+unless the Host advertises it, because older Hosts ignore the field and enter
+the text without Enter. A missing `submit` means `false`.

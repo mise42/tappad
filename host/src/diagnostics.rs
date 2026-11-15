@@ -224,8 +224,9 @@ fn linux_capabilities(
             "Type text",
             "Core input",
             PRODUCT_DEGRADED,
-            input_status
-                .with_evidence("Linux direct typing is ASCII-oriented; paste covers richer text"),
+            text_status(input_status).with_evidence(
+                "text is pasted (wl-copy + Shift+Insert) and replaces the clipboard",
+            ),
         ),
         capability(
             "paste_text",
@@ -528,6 +529,15 @@ fn recording_stop_status() -> RuntimeEvidence {
         }
     }
     status
+}
+
+/// Phone text is pasted: it needs `wl-copy` and the input device that presses Shift+Insert.
+#[cfg(target_os = "linux")]
+fn text_status(input_status: RuntimeEvidence) -> RuntimeEvidence {
+    if input_status.status != RUNTIME_READY {
+        return input_status;
+    }
+    command_status("wl-copy")
 }
 
 #[cfg(target_os = "linux")]

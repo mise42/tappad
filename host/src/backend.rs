@@ -470,30 +470,21 @@ async fn apply_backend_effect(
             client_input.record(&effect);
         }
         BackendEffect::Text { value, submit } => {
-            let mut input = state.input.lock().await;
-            let has_non_typeable = value.chars().any(|ch| !input.is_typeable(ch));
-            if has_non_typeable {
-                drop(input);
-                tokio::spawn(async move {
-                    if let Err(error) = do_paste(state.input.clone(), value).await {
-                        warn!("text paste fallback failed: {error}");
-                        return;
+            // Phone text is always pasted: typed keys pass through the desktop input method
+            // (fcitx5 pinyin turns ASCII into candidates and full-width punctuation).
+            tokio::spawn(async move {
+                if let Err(error) = do_paste(state.input.clone(), value).await {
+                    warn!("text paste failed: {error}");
+                    return;
+                }
+                if submit {
+                    // Wayland apps fetch pasted text asynchronously; let it land before Enter.
+                    tokio::time::sleep(PASTE_SUBMIT_DELAY).await;
+                    if let Err(error) = state.input.lock().await.tap("Enter") {
+                        warn!("text submit failed: {error}");
                     }
-                    if submit {
-                        // Wayland apps fetch pasted text asynchronously; let it land before Enter.
-                        tokio::time::sleep(PASTE_SUBMIT_DELAY).await;
-                        if let Err(error) = state.input.lock().await.tap("Enter") {
-                            warn!("text submit failed: {error}");
-                        }
-                    }
-                });
-            } else if let Err(error) = input
-                .type_text(&value)
-                .and_then(|()| if submit { input.tap("Enter") } else { Ok(()) })
-            {
-                warn!("text failed: {error}");
-                return Some(input_error("text", error));
-            }
+                }
+            });
         }
         BackendEffect::Authorize { password } => {
             if !authorization::valid_password(&password) {

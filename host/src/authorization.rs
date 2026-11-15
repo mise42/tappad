@@ -51,8 +51,14 @@ pub async fn current_state() -> AuthorizationState {
         return AuthorizationState::unavailable();
     };
     let request_active = contains_polkit_layer(&value);
+    // The password is typed with wtype; without it a submission can only fail.
+    let wtype_found = Command::new("sh")
+        .args(["-c", "command -v wtype >/dev/null 2>&1"])
+        .status()
+        .await
+        .is_ok_and(|status| status.success());
     AuthorizationState {
-        supported: true,
+        supported: wtype_found,
         request_active,
     }
 }

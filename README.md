@@ -56,8 +56,10 @@ This installs the headless Host as a systemd user service and enables the
 TapPad Quickshell widget. Run `./uninstall.sh` from the extracted release to
 remove the service, binary, and plugin; pairing settings are intentionally kept.
 
-Omarchy keyboard text injection uses the installed `ydotool`/`ydotoold` path.
-Text is passed through stdin, never command arguments or the clipboard.
+Text sent from the phone is pasted with `wl-copy` and Shift+Insert, so it is
+unaffected by the desktop input method and replaces the clipboard. The one-click
+authorization password is typed with `wtype`, which Omarchy installs by default,
+through stdin, never command arguments or the clipboard.
 
 ## Development
 
