@@ -18,7 +18,9 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PinnedWebSocket, randomNonce } from '../modules/tappad-pinned-socket';
 import { createLatestFrameCoalescer } from './frameCoalescer';
+import { bindingAuthorization, verifyHostProof } from './host-binding';
 import {
   AUTHORIZATION_RETRY_COOLDOWN_MS,
   authorizationPasswordError,
@@ -51,7 +53,6 @@ import {
 import { keyboardInset as keyboardInsetFor } from './keyboard-insets';
 import {
   hostStateActionCapabilities,
-  hostStateUrl,
   POINTER_BUTTONS,
   RELEASABLE_KEYS,
   releaseInputMessages,
@@ -78,6 +79,8 @@ type Props = {
   hostName: string;
   port: number;
   token: string;
+  /** SHA-256 of the paired Host certificate; the only certificate this surface talks to. */
+  fingerprint: string;
   onExit: () => void;
 };
 
@@ -180,7 +183,7 @@ function codexVoiceIcon(action: string): ComponentProps<typeof MaterialCommunity
   }
 }
 
-export function NativeControlSurface({ hostId, host, hostName, port, token, onExit }: Props) {
+export function NativeControlSurface({ hostId, host, hostName, port, token, fingerprint, onExit }: Props) {
   const [panel, setPanel] = useState<Panel>('pad');
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -200,20 +203,18 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
   const [authorizationSubmittedAt, setAuthorizationSubmittedAt] = useState<number | null>(null);
   const [authorizationCooldownNow, setAuthorizationCooldownNow] = useState(() => Date.now());
   const { top: topSafeArea } = useSafeAreaInsets();
-  const socketRef = useRef<WebSocket | null>(null);
+  const socketRef = useRef<PinnedWebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
   const hostDisconnectedRef = useRef(false);
-  const capabilityRequestRef = useRef(0);
   const mountedRef = useRef(true);
   const heldKeysRef = useRef(new Set<string>());
   const heldButtonsRef = useRef(new Set<PointerButton>());
 
   const send = useCallback((message: TapPadMessage) => {
     const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
-    socket.send(serializeMessage(message));
-    return true;
+    if (!socket || socket.readyState !== PinnedWebSocket.OPEN) return false;
+    return socket.send(serializeMessage(message));
   }, []);
 
   const releaseAll = useCallback(() => {
@@ -249,23 +250,16 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
     heldButtonsRef.current.delete(button);
   }, [send]);
 
+  // Host state travels over the pinned socket; the answer arrives as a `hostState` message.
   const loadCapabilities = useCallback(async () => {
-    const request = capabilityRequestRef.current + 1;
-    capabilityRequestRef.current = request;
-    try {
-      const response = await fetch(hostStateUrl(host, port));
-      if (!response.ok) throw new Error(`Host returned HTTP ${response.status}.`);
-      const state = await response.json() as HostState;
-      if (!mountedRef.current || capabilityRequestRef.current !== request) return;
-      setCapabilities(hostStateActionCapabilities(state));
-      setAuthorizationRequestActive(state.authorization?.requestActive === true);
-      setCapabilityError(null);
-    } catch (cause: unknown) {
-      if (!mountedRef.current || capabilityRequestRef.current !== request) return;
-      setAuthorizationRequestActive(false);
-      setCapabilityError(cause instanceof Error ? cause.message : 'Action availability could not be loaded.');
-    }
-  }, [host, port]);
+    send({ type: 'hostState' });
+  }, [send]);
+
+  const applyHostState = useCallback((state: HostState) => {
+    setCapabilities(hostStateActionCapabilities(state));
+    setAuthorizationRequestActive(state.authorization?.requestActive === true);
+    setCapabilityError(null);
+  }, []);
 
   const connectSocket = useCallback(() => {
     if (!mountedRef.current || hostDisconnectedRef.current) return;
@@ -277,12 +271,33 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
     setConnectionState('connecting');
     setConnectionError(null);
 
-    const socket = new WebSocket(socketUrl(host, port, token));
+    const nonce = randomNonce();
+    const socket = new PinnedWebSocket(
+      socketUrl(host, port),
+      fingerprint,
+      bindingAuthorization(token, fingerprint, nonce),
+    );
     socketRef.current = socket;
+    let hostVerified = false;
     socket.onmessage = (event) => {
       if (socketRef.current !== socket) return;
       try {
         const message = JSON.parse(String(event.data)) as ServerMessage;
+        if (!hostVerified) {
+          // Nothing is sent or trusted until the Host proves it holds the token for this certificate.
+          if (message.type !== 'ready' || !verifyHostProof(token, fingerprint, nonce, message.hostProof)) {
+            hostDisconnectedRef.current = true;
+            setConnectionState('error');
+            setConnectionError('The host could not prove its identity. Pair again by scanning its QR code.');
+            socket.close();
+            return;
+          }
+          hostVerified = true;
+        }
+        if (message.type === 'hostState') {
+          if (message.state) applyHostState(message.state);
+          return;
+        }
         if (message.type === 'disconnected') {
           hostDisconnectedRef.current = true;
           setNotice('Host 已断开当前连接；配对仍保留，点 Reconnect 可重新连接。');
@@ -329,12 +344,14 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
         setConnectionError('The host returned an invalid response.');
       }
     };
-    socket.onerror = () => {
+    socket.onerror = (error) => {
       if (socketRef.current !== socket) return;
       if (!mountedRef.current) return;
+      // A different certificate is not a network blip: never retry it automatically.
+      if (error.certificateMismatch) hostDisconnectedRef.current = true;
       setAuthorizationSubmitting(false);
       setConnectionState('error');
-      setConnectionError('Could not reach the desktop host.');
+      setConnectionError(error.message);
     };
     socket.onclose = () => {
       if (!mountedRef.current || socketRef.current !== socket) return;
@@ -343,13 +360,14 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
       setPointerButtonSupported(false);
       setTextSubmitSupported(false);
       setAuthorizationSubmitting(false);
-      setConnectionState('disconnected');
+      setAuthorizationRequestActive(false);
+      setConnectionState((current) => (current === 'error' ? current : 'disconnected'));
       if (hostDisconnectedRef.current) return;
       const delay = Math.min(1_000 * 2 ** reconnectAttemptRef.current, 8_000);
       reconnectAttemptRef.current += 1;
       reconnectTimerRef.current = setTimeout(connectSocket, delay);
     };
-  }, [host, loadCapabilities, port, releaseAll, token]);
+  }, [applyHostState, fingerprint, host, loadCapabilities, port, releaseAll, token]);
 
   useEffect(() => {
     mountedRef.current = true;

@@ -18,7 +18,9 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 
+import { PinnedWebSocket, probeFingerprint, randomNonce } from './modules/tappad-pinned-socket';
 import { NativeControlSurface } from './src/NativeControlSurface';
+import { bindingAuthorization, verifyHostProof } from './src/host-binding';
 import { PairingQrScanner } from './src/pairing-qr-scanner';
 import { theme } from './src/theme';
 
@@ -26,9 +28,11 @@ const SERVICE_TYPE = 'tappad';
 const PAIRINGS_KEY = 'tappad.pairings.v1';
 const CONNECTION_TIMEOUT_MS = 5_000;
 
-type Pairing = { hostId: string; token: string };
+// `fingerprint` is the pinned Host certificate. Pairings saved before TLS lack it and are upgraded
+// on their next connection once the Host proves it holds the token for the certificate it shows.
+type Pairing = { hostId: string; token: string; fingerprint?: string };
 type Pairings = Record<string, Pairing>;
-type ConnectedHost = { id: string; host: string; name: string; port: number; token: string };
+type ConnectedHost = { id: string; host: string; name: string; port: number; token: string; fingerprint: string };
 
 function serviceKey(service: Service) {
   return `${service.name}|${service.type}|${service.domain}`;
@@ -64,14 +68,15 @@ function pairingHosts(service: Service) {
     .filter((host): host is string => Boolean(host));
 }
 
-function websocketUrl(service: Service, token: string) {
-  return `ws://${connectionHost(service)}:${service.port}/ws?token=${encodeURIComponent(token)}`;
-}
-
-function verifyConnection(service: Service, token: string) {
+function verifyConnection(service: Service, token: string, fingerprint: string) {
   return new Promise<void>((resolve, reject) => {
     let settled = false;
-    const socket = new WebSocket(websocketUrl(service, token));
+    const nonce = randomNonce();
+    const socket = new PinnedWebSocket(
+      `wss://${connectionHost(service)}:${service.port}/ws`,
+      fingerprint,
+      bindingAuthorization(token, fingerprint, nonce),
+    );
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
@@ -88,14 +93,22 @@ function verifyConnection(service: Service, token: string) {
     socket.onmessage = (event) => {
       try {
         const message = JSON.parse(String(event.data));
-        if (message.type === 'ready') finish();
+        if (message.type !== 'ready') return;
+        if (verifyHostProof(token, fingerprint, nonce, message.hostProof)) finish();
+        else finish(new Error('The host could not prove its identity. Check the token, or scan the QR code.'));
       } catch {
         finish(new Error('The host returned an invalid pairing response.'));
       }
     };
-    socket.onerror = () => finish(new Error('Pairing failed. Check the token shown on the desktop host.'));
+    socket.onerror = (error) => finish(new Error(error.message));
     socket.onclose = () => finish(new Error('The host closed the pairing connection.'));
   });
+}
+
+/** A saved token keeps its pinned certificate; only a newly entered token may pin a new one. */
+function pinnedFingerprint(pairings: Pairings, service: Service, token: string) {
+  const saved = pairings[hostId(service)];
+  return saved && saved.token === token.trim() ? saved.fingerprint : undefined;
 }
 
 async function loadPairings(): Promise<Pairings> {
@@ -167,7 +180,7 @@ function AppContent() {
     };
   }, [beginDiscovery]);
 
-  const connect = useCallback(async (service: Service, pairingToken: string) => {
+  const connect = useCallback(async (service: Service, pairingToken: string, pairedFingerprint?: string) => {
     const normalizedToken = pairingToken.trim();
     if (!normalizedToken) {
       setError('Enter the pairing token shown by the desktop host.');
@@ -177,9 +190,12 @@ function AppContent() {
     setConnecting(true);
     setError(null);
     try {
-      await verifyConnection(service, normalizedToken);
+      // Manual tokens and pre-TLS pairings have no fingerprint yet. The probed certificate is only
+      // pinned after verifyConnection checks the Host's token-bound proof for exactly that certificate.
+      const fingerprint = pairedFingerprint ?? await probeFingerprint(connectionHost(service), service.port);
+      await verifyConnection(service, normalizedToken, fingerprint);
       const id = hostId(service);
-      const nextPairings = { ...pairings, [id]: { hostId: id, token: normalizedToken } };
+      const nextPairings = { ...pairings, [id]: { hostId: id, token: normalizedToken, fingerprint } };
       await savePairings(nextPairings);
       setPairings(nextPairings);
       setSelected(null);
@@ -190,6 +206,7 @@ function AppContent() {
         name: displayName(service),
         port: service.port,
         token: normalizedToken,
+        fingerprint,
       });
       return true;
     } catch (cause) {
@@ -210,7 +227,7 @@ function AppContent() {
       return;
     }
 
-    const connected = await connect(service, saved.token);
+    const connected = await connect(service, saved.token, saved.fingerprint);
     if (!connected) {
       setSelected(service);
       setToken(saved.token);
@@ -225,7 +242,8 @@ function AppContent() {
     const key = serviceKey(pairedHost);
     if (attemptedReconnects.current.has(key)) return;
     attemptedReconnects.current.add(key);
-    void connect(pairedHost, pairings[hostId(pairedHost)].token);
+    const saved = pairings[hostId(pairedHost)];
+    void connect(pairedHost, saved.token, saved.fingerprint);
   }, [autoReconnectEnabled, connect, connectedHost, connecting, hosts, pairings, selected]);
 
   if (connectedHost) {
@@ -236,6 +254,7 @@ function AppContent() {
         hostName={connectedHost.name}
         port={connectedHost.port}
         token={connectedHost.token}
+        fingerprint={connectedHost.fingerprint}
         onExit={() => {
           setAutoReconnectEnabled(false);
           setConnectedHost(null);
@@ -251,10 +270,10 @@ function AppContent() {
         expectedPort={selected.port}
         hostName={displayName(selected)}
         onCancel={() => setScannerOpen(false)}
-        onToken={(scannedToken) => {
+        onPairing={(scanned) => {
           setScannerOpen(false);
-          setToken(scannedToken);
-          void connect(selected, scannedToken);
+          setToken(scanned.token);
+          void connect(selected, scanned.token, scanned.fingerprint);
         }}
       />
     );
@@ -322,13 +341,13 @@ function AppContent() {
               secureTextEntry
               style={styles.input}
               editable={!connecting}
-              onSubmitEditing={() => void connect(selected, token)}
+              onSubmitEditing={() => void connect(selected, token, pinnedFingerprint(pairings, selected, token))}
             />
             <View style={styles.actions}>
               <Pressable onPress={() => { setSelected(null); setToken(''); setScannerOpen(false); setError(null); }} style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}>
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </Pressable>
-              <Pressable onPress={() => void connect(selected, token)} style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed, connecting && styles.buttonDisabled]} disabled={connecting}>
+              <Pressable onPress={() => void connect(selected, token, pinnedFingerprint(pairings, selected, token))} style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed, connecting && styles.buttonDisabled]} disabled={connecting}>
                 {connecting ? <ActivityIndicator color={theme.color.onPrimary} /> : <Text style={styles.primaryButtonText}>Connect</Text>}
               </Pressable>
             </View>

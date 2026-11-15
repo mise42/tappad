@@ -94,8 +94,8 @@ test('release cleanup emits one key-up per held key', () => {
   ]);
 });
 
-test('pairing token is encoded in the existing websocket URL', () => {
-  assert.equal(socketUrl('192.168.1.2', 8765, 'a b&c'), 'ws://192.168.1.2:8765/ws?token=a%20b%26c');
+test('the websocket URL is encrypted and never carries the pairing token', () => {
+  assert.equal(socketUrl('192.168.1.2', 8765), 'wss://192.168.1.2:8765/ws');
 });
 
 test('workspace controls only include actions the Host supports', () => {

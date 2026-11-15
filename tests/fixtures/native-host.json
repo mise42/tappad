@@ -3,9 +3,44 @@
   "hostId": "host-id",
   "host": "tappad-host-id.local",
   "port": 8765,
-  "pairingUrl": "http://tappad-host-id.local:8765/?token=pair-token",
-  "authorization": { "type": "authorize", "password": "fixture-only" },
-  "result": { "type": "authorizationResult", "status": "submitted", "message": "Input submitted." },
-  "textSubmit": { "type": "text", "value": "你好", "submit": true },
-  "ready": { "type": "ready", "protocolVersion": 2, "contract": { "version": 1, "protocolVersion": 2, "inputCapabilities": { "pointerButton": { "state": "supported" }, "textSubmit": { "state": "supported" } } } }
+  "pairingUrl": "https://tappad-host-id.local:8765/#token=pair-token&fp=abababababababababababababababababababababababababababababababab",
+  "authorization": {
+    "type": "authorize",
+    "password": "fixture-only"
+  },
+  "result": {
+    "type": "authorizationResult",
+    "status": "submitted",
+    "message": "Input submitted."
+  },
+  "textSubmit": {
+    "type": "text",
+    "value": "你好",
+    "submit": true
+  },
+  "ready": {
+    "type": "ready",
+    "protocolVersion": 2,
+    "contract": {
+      "version": 1,
+      "protocolVersion": 2,
+      "inputCapabilities": {
+        "pointerButton": {
+          "state": "supported"
+        },
+        "textSubmit": {
+          "state": "supported"
+        }
+      }
+    },
+    "hostProof": "1143372f8e3a20b303bc9b687d377b17296665fab3d5fde4b83a3a4b4e1a412d"
+  },
+  "fingerprint": "abababababababababababababababababababababababababababababababab",
+  "binding": {
+    "token": "pair-token",
+    "fingerprint": "abababababababababababababababababababababababababababababababab",
+    "nonce": "bm9uY2UtZm9yLWZpeHR1cmU",
+    "clientProof": "5fc4816a995d4ad245d93988a803bfb4dd52b07c8dbf01243a2845ba081b4514",
+    "hostProof": "1143372f8e3a20b303bc9b687d377b17296665fab3d5fde4b83a3a4b4e1a412d"
+  }
 }

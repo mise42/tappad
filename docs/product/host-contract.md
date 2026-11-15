@@ -11,8 +11,9 @@ Backend.
 
 ## Contract snapshot
 
-The Host publishes the additive contract snapshot in `GET /api/host-state` and
-the authenticated WebSocket `ready` message:
+The Host publishes the additive contract snapshot in the authenticated WebSocket
+`ready` message, in the `hostState` reply to a `hostState` request on that
+socket, and in `GET /api/host-state`:
 
 ```json
 {
@@ -29,8 +30,24 @@ the authenticated WebSocket `ready` message:
 }
 ```
 
-The authenticated snapshot is authoritative for that connection. The HTTP
-snapshot supports preflight and status refresh.
+The authenticated snapshot is authoritative for that connection. Native clients
+refresh it over the pinned socket; the HTTP snapshot remains for local tools.
+
+## Transport and authentication
+
+LAN clients reach the Host only over TLS on the Host port; plain HTTP is
+accepted from loopback only (Quickshell plugin and CLI). The Host certificate is
+self-signed and identified by its SHA-256 fingerprint. See ADR 0007.
+
+- Native clients pin that fingerprint and authenticate the WebSocket upgrade with
+  `Authorization: TapPad-Binding <nonce>.<hex HMAC-SHA256(token,
+  "tappad-client-v1\n" + fingerprint + "\n" + nonce)>`. The Host answers in
+  `ready.hostProof` with the same HMAC under the label `tappad-host-v1`; clients
+  send nothing until it verifies.
+- The browser surface cannot set headers; its first message must be
+  `{"type":"auth","token":…}` within five seconds.
+- The pairing token never appears in a URL that is sent to the Host. The pairing
+  link is `https://<host>:<port>/#token=<token>&fp=<fingerprint>`.
 
 ## Stability rules
 

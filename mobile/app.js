@@ -6,7 +6,8 @@ const sendTextButton = document.getElementById("sendText");
 const releaseAllButton = document.getElementById("releaseAll");
 const rootStyle = document.documentElement.style;
 
-const query = new URLSearchParams(window.location.search);
+// The pairing QR code puts the token in the fragment, which the browser never sends to the Host.
+const pairingToken = new URLSearchParams(window.location.hash.slice(1)).get("token");
 const actionCapabilities = window.__TAPPAD_ACTIONS__ || {};
 let ws;
 let activePointers = new Map();
@@ -91,10 +92,9 @@ function keepTextInputVisible() {
 }
 
 function socketUrl() {
+  // Plain ws:// only works on the desktop itself; the Host accepts LAN clients only over TLS.
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const token = query.get("token");
-  const suffix = token ? `?token=${encodeURIComponent(token)}` : "";
-  return `${proto}//${window.location.host}/ws${suffix}`;
+  return `${proto}//${window.location.host}/ws`;
 }
 
 function setStatus(text, state) {
@@ -106,7 +106,11 @@ function connect() {
   if (ws) ws.close();
   setStatus("Connecting", "connecting");
   ws = new WebSocket(socketUrl());
-  ws.addEventListener("open", () => setStatus("Connected", "ready"));
+  ws.addEventListener("open", () => {
+    // A browser cannot set headers on a WebSocket, so the token is the first message.
+    ws.send(JSON.stringify({ type: "auth", token: pairingToken || "" }));
+    setStatus("Connected", "ready");
+  });
   ws.addEventListener("close", () => setStatus("Disconnected", "closed"));
   ws.addEventListener("error", () => setStatus("Connection error", "error"));
 }

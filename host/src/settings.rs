@@ -9,6 +9,8 @@ use std::{
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 
+use crate::tls::{TlsIdentity, tls_dir};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeSettings {
@@ -20,6 +22,9 @@ pub struct RuntimeSettings {
     pub launch_at_login: bool,
     #[serde(skip)]
     pub lan_host: Option<Ipv4Addr>,
+    /// SHA-256 of the Host TLS certificate; the pairing QR code carries it.
+    #[serde(skip)]
+    pub tls_fingerprint: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,7 +39,7 @@ struct StoredSettings {
 impl RuntimeSettings {
     pub fn from_store(data_dir: &Path, launch_at_login: bool) -> io::Result<Self> {
         let stored = read_stored_settings(data_dir)?;
-        Ok(Self {
+        let mut settings = Self {
             bind_host: "0.0.0.0".to_string(),
             port: stored.port,
             token: stored.token,
@@ -42,7 +47,18 @@ impl RuntimeSettings {
             hostname: hostname(),
             launch_at_login,
             lan_host: preferred_lan_ipv4(),
-        })
+            tls_fingerprint: String::new(),
+        };
+        // Clients pin the fingerprint, not a name, so the certificate survives address changes.
+        let mut names = vec![
+            "localhost".to_string(),
+            "127.0.0.1".to_string(),
+            settings.mdns_hostname().trim_end_matches('.').to_string(),
+        ];
+        names.extend(settings.lan_host.map(|host| host.to_string()));
+        settings.tls_fingerprint =
+            TlsIdentity::load_or_create(&tls_dir(data_dir), &names)?.fingerprint;
+        Ok(settings)
     }
 
     pub fn with_new_token(&self) -> Self {
@@ -53,11 +69,7 @@ impl RuntimeSettings {
     }
 
     pub fn local_url(&self, include_token: bool) -> String {
-        control_url(
-            self.mdns_hostname().trim_end_matches('.'),
-            self.port,
-            include_token.then_some(&self.token),
-        )
+        self.control_url(self.mdns_hostname().trim_end_matches('.'), include_token)
     }
 
     pub fn mdns_hostname(&self) -> String {
@@ -84,13 +96,18 @@ impl RuntimeSettings {
     }
 
     pub fn lan_url(&self, include_token: bool) -> Option<String> {
-        self.lan_host.map(|host| {
-            control_url(
-                &host.to_string(),
-                self.port,
-                include_token.then_some(&self.token),
-            )
-        })
+        self.lan_host
+            .map(|host| self.control_url(&host.to_string(), include_token))
+    }
+
+    /// Pairing credentials go in the fragment, which browsers never send to the Host.
+    fn control_url(&self, host: &str, include_token: bool) -> String {
+        let fragment = if include_token {
+            format!("#token={}&fp={}", self.token, self.tls_fingerprint)
+        } else {
+            String::new()
+        };
+        format!("https://{host}:{}/{fragment}", self.port)
     }
 }
 
@@ -158,13 +175,6 @@ fn normalize_token(token: String) -> io::Result<String> {
     } else {
         Ok(token)
     }
-}
-
-fn control_url(host: &str, port: u16, token: Option<&String>) -> String {
-    let suffix = token
-        .map(|token| format!("?token={token}"))
-        .unwrap_or_default();
-    format!("http://{host}:{port}/{suffix}")
 }
 
 fn preferred_lan_ipv4() -> Option<Ipv4Addr> {
@@ -290,12 +300,13 @@ mod tests {
             hostname: "Mise Omarchy.local".to_string(),
             launch_at_login: false,
             lan_host: None,
+            tls_fingerprint: "ab".repeat(32),
         };
 
         assert_eq!(settings.mdns_hostname(), "tappad-host-id.local.");
         assert_eq!(
             settings.local_url(false),
-            "http://tappad-host-id.local:8765/"
+            "https://tappad-host-id.local:8765/"
         );
     }
 
@@ -309,6 +320,7 @@ mod tests {
             hostname: "host".to_string(),
             launch_at_login: false,
             lan_host: None,
+            tls_fingerprint: "ab".repeat(32),
         };
 
         assert_eq!(settings.mdns_hostname(), "tappad-abx12--x.local.");

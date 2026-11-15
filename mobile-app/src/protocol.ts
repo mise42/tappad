@@ -1,5 +1,6 @@
 export type TapPadMessage =
   | { type: 'clientInfo'; name: string }
+  | { type: 'hostState' }
   | { type: 'move'; dx: number; dy: number }
   | { type: 'wheel'; dy: number }
   | { type: 'click'; button: 'left' | 'right' | 'middle'; clickCount?: number }
@@ -75,6 +76,8 @@ export type ServerMessage = {
   action?: string;
   status?: string;
   contract?: HostContract;
+  hostProof?: string;
+  state?: HostState;
 };
 
 export const POINTER_BUTTONS = ['left', 'right', 'middle'] as const;
@@ -95,12 +98,10 @@ export const RELEASABLE_KEYS = [
   'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5',
 ] as const;
 
-export function socketUrl(host: string, port: number, token: string) {
-  return `ws://${host}:${port}/ws?token=${encodeURIComponent(token)}`;
-}
-
-export function hostStateUrl(host: string, port: number) {
-  return `http://${host}:${port}/api/host-state`;
+// The pairing token is never in the URL: the native client sends a certificate-bound proof in
+// the Authorization header (see host-binding.ts).
+export function socketUrl(host: string, port: number) {
+  return `wss://${host}:${port}/ws`;
 }
 
 export function serializeMessage(message: TapPadMessage) {

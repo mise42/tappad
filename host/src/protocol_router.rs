@@ -44,7 +44,9 @@ impl ProtocolRouter {
         }
 
         Some(match message {
-            ClientMessage::ClientInfo { .. } => return None,
+            ClientMessage::ClientInfo { .. }
+            | ClientMessage::Auth { .. }
+            | ClientMessage::HostState => return None,
             ClientMessage::Move { dx, dy } => BackendEffect::Move {
                 dx: dx.round() as i32,
                 dy: dy.round() as i32,

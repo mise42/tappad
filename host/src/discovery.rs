@@ -17,7 +17,9 @@ pub fn publish(
         ("host", mdns_hostname.as_str()),
         ("path", "/"),
         ("auth", "token"),
-        ("version", "1"),
+        // Discovery is only a route; clients trust the pinned certificate, never this record.
+        ("tls", "1"),
+        ("version", "2"),
     ];
     if let Some(lan_ipv4) = lan_ipv4.as_deref() {
         properties.push(("ipv4", lan_ipv4));

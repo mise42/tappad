@@ -14,10 +14,10 @@ type Props = {
   expectedPort: number;
   hostName: string;
   onCancel: () => void;
-  onToken: (token: string) => void;
+  onPairing: (pairing: { token: string; fingerprint: string }) => void;
 };
 
-export function PairingQrScanner({ allowedHosts, expectedPort, hostName, onCancel, onToken }: Props) {
+export function PairingQrScanner({ allowedHosts, expectedPort, hostName, onCancel, onPairing }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanLocked, setScanLocked] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -40,8 +40,8 @@ export function PairingQrScanner({ allowedHosts, expectedPort, hostName, onCance
     }
 
     setScanLocked(true);
-    onToken(pairing.token);
-  }, [allowedHosts, expectedPort, onToken, scanLocked]);
+    onPairing({ token: pairing.token, fingerprint: pairing.fingerprint });
+  }, [allowedHosts, expectedPort, onPairing, scanLocked]);
 
   if (!permission) {
     return (

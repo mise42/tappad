@@ -26,6 +26,8 @@ pub struct PairingLinks {
     pub local_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
+    /// SHA-256 of the Host TLS certificate. Public: it identifies the Host but grants nothing.
+    pub fingerprint: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -151,6 +153,7 @@ fn pairing_links(settings: &RuntimeSettings, include_pairing_token: bool) -> Pai
         lan_url,
         local_url,
         token: include_pairing_token.then(|| settings.token.clone()),
+        fingerprint: settings.tls_fingerprint.clone(),
     }
 }
 
@@ -225,6 +228,7 @@ mod tests {
             hostname: "desktop".to_string(),
             launch_at_login: true,
             lan_host: None,
+            tls_fingerprint: "ab".repeat(32),
         }
     }
 
@@ -285,7 +289,10 @@ mod tests {
         assert_eq!(state.pairing.token.as_deref(), Some("pair-token"));
         assert_eq!(
             state.pairing.preferred_url,
-            "http://tappad-host-id.local:8765/?token=pair-token"
+            format!(
+                "https://tappad-host-id.local:8765/#token=pair-token&fp={}",
+                "ab".repeat(32)
+            )
         );
         assert!(
             state
@@ -320,7 +327,7 @@ mod tests {
         assert!(state.pairing.token.is_none());
         assert_eq!(
             state.pairing.preferred_url,
-            "http://tappad-host-id.local:8765/"
+            "https://tappad-host-id.local:8765/"
         );
         assert!(state.server_status.token_enabled);
     }

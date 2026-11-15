@@ -10,9 +10,11 @@ mod host_contract;
 mod host_surface;
 mod input;
 mod input_chord;
+mod listener;
 mod protocol;
 mod protocol_router;
 mod settings;
+mod tls;
 
 use std::{
     env,
@@ -89,7 +91,8 @@ async fn execute(args: Vec<String>) -> Result<(), Box<dyn Error + Send + Sync>> 
 
 async fn run(data_dir: PathBuf) -> Result<(), Box<dyn Error + Send + Sync>> {
     let settings = RuntimeSettings::from_store(&data_dir, true)?;
-    let listener = backend::bind(&settings).await?;
+    let identity = tls::TlsIdentity::load(&tls::tls_dir(&data_dir))?;
+    let listener = backend::bind(&settings, identity.server_config()?).await?;
     let runtime = BackendRuntime::new(settings)?;
     let running = backend::spawn(listener, runtime)?;
 
@@ -154,6 +157,8 @@ fn local_request(
 fn reset_pairing(data_dir: &std::path::Path) -> Result<(), Box<dyn Error + Send + Sync>> {
     let settings = RuntimeSettings::from_store(data_dir, true)?.with_new_token();
     persist_settings(data_dir, &settings)?;
+    // A new certificate also invalidates every pinned client, matching the new token.
+    tls::TlsIdentity::remove(&tls::tls_dir(data_dir))?;
     println!(r#"{{"reset":true,"restartRequired":true}}"#);
     Ok(())
 }

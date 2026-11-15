@@ -23,6 +23,7 @@ use std::{
     },
 };
 use tokio::{net::TcpListener, sync::Mutex, task::JoinHandle};
+use tokio_rustls::rustls::ServerConfig;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -34,19 +35,26 @@ use crate::{
     host_contract::current_host_contract,
     host_surface::{HostSurfaceState, host_surface_state, render_mobile_index},
     input::{InputDevice, input_capabilities},
+    listener::{HostListener, PeerInfo},
     protocol::{ClientMessage, ServerMessage},
     protocol_router::{BackendEffect, ProtocolRouter},
     settings::RuntimeSettings,
+    tls,
 };
 
 static MOBILE_ASSETS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../mobile");
 static CLIENT_COUNTER: AtomicU64 = AtomicU64::new(0);
 const PASTE_TEXT_LIMIT_BYTES: usize = 12_000;
 const PASTE_SUBMIT_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
+const FIRST_MESSAGE_AUTH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-#[derive(Debug, serde::Deserialize)]
-struct WsQuery {
-    token: Option<String>,
+/// How a WebSocket client proved it holds the pairing token.
+enum SocketAuth {
+    /// Native app: the `TapPad-Binding` header bound the token to this Host certificate. The
+    /// value is the Host's answering proof, returned in `ready`.
+    Bound(String),
+    /// Browser surface: it cannot set headers, so its first message must be `auth`.
+    FirstMessage,
 }
 
 pub struct BackendRuntime {
@@ -80,10 +88,10 @@ impl BackendRuntime {
 }
 
 pub fn spawn(
-    listener: TcpListener,
+    listener: HostListener,
     runtime: BackendRuntime,
 ) -> Result<RunningBackend, Box<dyn std::error::Error + Send + Sync>> {
-    let addr = listener.local_addr()?;
+    let addr = axum::serve::Listener::local_addr(&listener)?.addr;
     let shutdown = CancellationToken::new();
     let shutdown_for_task = shutdown.clone();
     let state = Arc::new(runtime);
@@ -104,10 +112,10 @@ pub fn spawn(
         .with_state(state);
 
     let task = tokio::spawn(async move {
-        info!("TapPad backend listening on http://{addr}");
+        info!("TapPad backend listening on https://{addr} (plain HTTP on loopback only)");
         let result = axum::serve(
             listener,
-            app.into_make_service_with_connect_info::<SocketAddr>(),
+            app.into_make_service_with_connect_info::<PeerInfo>(),
         )
         .with_graceful_shutdown(shutdown_for_task.cancelled_owned())
         .await;
@@ -126,17 +134,24 @@ pub fn spawn(
     Ok(RunningBackend { shutdown, task })
 }
 
-pub async fn bind(settings: &RuntimeSettings) -> io::Result<TcpListener> {
+pub async fn bind(
+    settings: &RuntimeSettings,
+    tls_config: Arc<ServerConfig>,
+) -> io::Result<HostListener> {
     let addr: SocketAddr = format!("{}:{}", settings.bind_host, settings.port)
         .parse()
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
-    TcpListener::bind(addr).await
+    HostListener::new(TcpListener::bind(addr).await?, tls_config)
 }
 
 async fn api_host_state(State(state): State<Arc<BackendRuntime>>) -> Json<HostSurfaceState> {
+    Json(current_host_state(&state).await)
+}
+
+async fn current_host_state(state: &BackendRuntime) -> HostSurfaceState {
     let mut host_state = host_surface_state(state.settings(), true, None, false, true, None);
     host_state.authorization = authorization::current_state().await;
-    Json(host_state)
+    host_state
 }
 
 fn local_authorized(peer: SocketAddr, headers: &HeaderMap, token: &str) -> bool {
@@ -147,11 +162,11 @@ fn local_authorized(peer: SocketAddr, headers: &HeaderMap, token: &str) -> bool 
             == Some(format!("Bearer {token}").as_str())
 }
 async fn api_local_state(
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    ConnectInfo(peer): ConnectInfo<PeerInfo>,
     headers: HeaderMap,
     State(state): State<Arc<BackendRuntime>>,
 ) -> Response {
-    if !local_authorized(peer, &headers, &state.settings.token) {
+    if !local_authorized(peer.addr, &headers, &state.settings.token) {
         return StatusCode::FORBIDDEN.into_response();
     }
     let mut value = serde_json::to_value(host_surface_state(
@@ -175,12 +190,12 @@ struct DisconnectQuery {
     id: String,
 }
 async fn api_disconnect(
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    ConnectInfo(peer): ConnectInfo<PeerInfo>,
     headers: HeaderMap,
     Query(query): Query<DisconnectQuery>,
     State(state): State<Arc<BackendRuntime>>,
 ) -> Response {
-    if !local_authorized(peer, &headers, &state.settings.token) {
+    if !local_authorized(peer.addr, &headers, &state.settings.token) {
         return StatusCode::FORBIDDEN.into_response();
     }
     let connections = state.connections.lock().await;
@@ -194,27 +209,72 @@ async fn api_disconnect(
 
 async fn ws_handler(
     ws: WebSocketUpgrade,
-    Query(query): Query<WsQuery>,
+    headers: HeaderMap,
     State(state): State<Arc<BackendRuntime>>,
 ) -> impl IntoResponse {
-    match &query.token {
-        Some(provided) if provided == &state.settings.token => {}
-        _ => {
+    let auth = match socket_auth(&headers, &state.settings) {
+        Some(auth) => auth,
+        None => {
             state.connections.lock().await.reject();
             return (StatusCode::FORBIDDEN, "Forbidden").into_response();
         }
-    }
+    };
 
-    let client_id = format!("client-{}", CLIENT_COUNTER.fetch_add(1, Ordering::SeqCst));
-    ws.on_upgrade(move |socket| handle_socket(socket, state, client_id))
+    ws.on_upgrade(move |socket| handle_socket(socket, state, auth))
 }
 
-async fn handle_socket(mut socket: WebSocket, state: Arc<BackendRuntime>, client_id: String) {
+fn socket_auth(headers: &HeaderMap, settings: &RuntimeSettings) -> Option<SocketAuth> {
+    let Some(value) = headers.get(header::AUTHORIZATION) else {
+        return Some(SocketAuth::FirstMessage);
+    };
+    let (nonce, proof) = tls::parse_binding(value.to_str().ok()?)?;
+    tls::verify_client_proof(&settings.token, &settings.tls_fingerprint, nonce, proof).then(|| {
+        SocketAuth::Bound(tls::host_proof(
+            &settings.token,
+            &settings.tls_fingerprint,
+            nonce,
+        ))
+    })
+}
+
+/// Waits for the browser surface's `auth` message; nothing else is accepted before it.
+async fn authenticate_first_message(socket: &mut WebSocket, token: &str) -> bool {
+    let Ok(Some(Ok(WsMessage::Text(text)))) =
+        tokio::time::timeout(FIRST_MESSAGE_AUTH_TIMEOUT, socket.recv()).await
+    else {
+        return false;
+    };
+    matches!(
+        serde_json::from_str::<ClientMessage>(&text),
+        Ok(ClientMessage::Auth { token: provided })
+            if tls::constant_time_eq(provided.as_bytes(), token.as_bytes())
+    )
+}
+
+async fn handle_socket(mut socket: WebSocket, state: Arc<BackendRuntime>, auth: SocketAuth) {
+    let host_proof = match auth {
+        SocketAuth::Bound(proof) => Some(proof),
+        SocketAuth::FirstMessage => {
+            if !authenticate_first_message(&mut socket, &state.settings.token).await {
+                state.connections.lock().await.reject();
+                let _ = socket.send(WsMessage::Close(None)).await;
+                return;
+            }
+            None
+        }
+    };
+    let client_id = format!("client-{}", CLIENT_COUNTER.fetch_add(1, Ordering::SeqCst));
     info!("client connected: {client_id}");
     let mut client_input = ClientInputState::default();
     let disconnect = state.connections.lock().await.add(client_id.clone());
 
-    let ready = ServerMessage::ready(state.settings.hostname.clone(), current_host_contract());
+    let mut ready = ServerMessage::ready(state.settings.hostname.clone(), current_host_contract());
+    if let ServerMessage::Ready {
+        host_proof: slot, ..
+    } = &mut ready
+    {
+        *slot = host_proof;
+    }
     let _ = socket
         .send(WsMessage::Text(
             serde_json::to_string(&ready).unwrap_or_default().into(),
@@ -252,9 +312,19 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<BackendRuntime>, client
             }
         };
 
-        if let ClientMessage::ClientInfo { name } = message {
-            state.connections.lock().await.identify(&client_id, &name);
-            continue;
+        match message {
+            ClientMessage::ClientInfo { name } => {
+                state.connections.lock().await.identify(&client_id, &name);
+                continue;
+            }
+            ClientMessage::HostState => {
+                let host_state = Box::new(current_host_state(&state).await);
+                send_server_message(&mut socket, ServerMessage::HostState { state: host_state })
+                    .await;
+                continue;
+            }
+            ClientMessage::Auth { .. } => continue,
+            _ => {}
         }
         state.connections.lock().await.input(&client_id);
         let effect = state.router.lock().await.route(&client_id, message);
@@ -692,7 +762,48 @@ mod tests {
         BackendEffect, ClientInputState, PASTE_TEXT_LIMIT_BYTES, mobile_asset_path,
         truncate_to_char_boundary,
     };
-    use super::{HeaderMap, header, local_authorized};
+    use super::{HeaderMap, SocketAuth, header, local_authorized, socket_auth};
+    use crate::{settings::RuntimeSettings, tls};
+
+    #[test]
+    fn websocket_requires_a_token_bound_to_this_host_certificate() {
+        let settings = RuntimeSettings {
+            bind_host: "0.0.0.0".into(),
+            port: 8765,
+            token: "pair-token".into(),
+            host_id: "host-id".into(),
+            hostname: "desktop".into(),
+            launch_at_login: false,
+            lan_host: None,
+            tls_fingerprint: "ab".repeat(32),
+        };
+        let nonce = "AAAAAAAAAAAAAAAAAAAAAA";
+        let with_auth = |value: String| {
+            let mut headers = HeaderMap::new();
+            headers.insert(header::AUTHORIZATION, value.parse().unwrap());
+            socket_auth(&headers, &settings)
+        };
+
+        let proof = tls::client_proof("pair-token", &settings.tls_fingerprint, nonce);
+        match with_auth(format!("TapPad-Binding {nonce}.{proof}")) {
+            Some(SocketAuth::Bound(host_proof)) => assert_eq!(
+                host_proof,
+                tls::host_proof("pair-token", &settings.tls_fingerprint, nonce)
+            ),
+            _ => panic!("bound token must be accepted"),
+        }
+        // A proof made against an intercepting certificate is useless at the real Host.
+        let relayed = tls::client_proof("pair-token", &"cd".repeat(32), nonce);
+        assert!(with_auth(format!("TapPad-Binding {nonce}.{relayed}")).is_none());
+        let wrong_token = tls::client_proof("other", &settings.tls_fingerprint, nonce);
+        assert!(with_auth(format!("TapPad-Binding {nonce}.{wrong_token}")).is_none());
+        assert!(with_auth("Bearer pair-token".into()).is_none());
+        // Without a header the browser surface must authenticate with its first message.
+        assert!(matches!(
+            socket_auth(&HeaderMap::new(), &settings),
+            Some(SocketAuth::FirstMessage)
+        ));
+    }
 
     #[test]
     fn local_controls_require_loopback_and_pairing_credential() {

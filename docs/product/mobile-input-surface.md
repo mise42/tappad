@@ -13,8 +13,9 @@ pairing, secure storage, or the native control surface.
 2. The user selects a Host and scans its Quickshell pairing QR code in the app,
    or enters the pairing token manually.
 3. The app validates the QR address and port against the selected Host, then
-   connects to `/ws?token=...` and waits for `ready` before saving credentials.
-4. SecureStore retains the pairing under the stable Host ID.
+   opens `wss://…/ws` pinned to the QR certificate fingerprint and waits for a
+   `ready` whose `hostProof` verifies before saving credentials (ADR 0007).
+4. SecureStore retains the token and pinned fingerprint under the stable Host ID.
 5. Later discovery reconnects to that paired Host and opens native controls.
 
 Discovery supplies candidates; it never grants Device Authorization. Preserve

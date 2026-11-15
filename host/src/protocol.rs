@@ -2,7 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{host_contract::HostContract, input::InputCapabilities};
+use crate::{
+    host_contract::HostContract, host_surface::HostSurfaceState, input::InputCapabilities,
+};
 
 pub const PROTOCOL_VERSION: u16 = 2;
 
@@ -11,6 +13,11 @@ pub const PROTOCOL_VERSION: u16 = 2;
 pub enum ClientMessage {
     #[serde(rename = "clientInfo")]
     ClientInfo { name: String },
+    /// Browser clients cannot set headers, so they authenticate with their first message.
+    #[serde(rename = "auth")]
+    Auth { token: String },
+    #[serde(rename = "hostState")]
+    HostState,
     #[serde(rename = "move")]
     Move { dx: f64, dy: f64 },
     #[serde(rename = "wheel")]
@@ -64,7 +71,12 @@ pub enum ServerMessage {
         #[serde(rename = "inputCapabilities")]
         input_capabilities: InputCapabilities,
         contract: HostContract,
+        /// Proves the Host knows the pairing token for the certificate the client observed.
+        #[serde(rename = "hostProof", skip_serializing_if = "Option::is_none")]
+        host_proof: Option<String>,
     },
+    #[serde(rename = "hostState")]
+    HostState { state: Box<HostSurfaceState> },
     #[serde(rename = "error")]
     Error { code: &'static str, message: String },
     #[serde(rename = "actionResult")]
@@ -92,6 +104,7 @@ impl ServerMessage {
             protocol_version: contract.protocol_version,
             input_capabilities: contract.input_capabilities.clone(),
             contract,
+            host_proof: None,
         }
     }
 
