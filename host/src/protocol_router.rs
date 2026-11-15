@@ -11,7 +11,7 @@ pub enum BackendEffect {
     Click { button: String, click_count: u8 },
     PointerButton { button: String, down: bool },
     Key { code: String, down: bool },
-    Text { value: String },
+    Text { value: String, submit: bool },
     Paste { value: String },
     Cmd { action: String },
     Authorize { password: String },
@@ -63,7 +63,7 @@ impl ProtocolRouter {
                 BackendEffect::PointerButton { button, down }
             }
             ClientMessage::Key { code, down } => BackendEffect::Key { code, down },
-            ClientMessage::Text { value } => BackendEffect::Text { value },
+            ClientMessage::Text { value, submit } => BackendEffect::Text { value, submit },
             ClientMessage::Paste { value } => BackendEffect::Paste { value },
             ClientMessage::Cmd { action } => BackendEffect::Cmd { action },
             ClientMessage::Authorize { password } => BackendEffect::Authorize { password },

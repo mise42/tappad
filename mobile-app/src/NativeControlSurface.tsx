@@ -14,7 +14,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -49,7 +48,7 @@ import {
   type GestureState,
   type Point,
 } from './gestureState';
-import { keyboardInsetFromFrame } from './keyboard-insets';
+import { keyboardInset as keyboardInsetFor } from './keyboard-insets';
 import {
   hostStateActionCapabilities,
   hostStateUrl,
@@ -67,6 +66,7 @@ import {
   type ServerMessage,
   type TapPadMessage,
   supportsPointerButton,
+  supportsTextSubmit,
 } from './protocol';
 import { theme } from './theme';
 
@@ -187,6 +187,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
   const [capabilities, setCapabilities] = useState<ActionCapabilities | null>(null);
   const [capabilityError, setCapabilityError] = useState<string | null>(null);
   const [pointerButtonSupported, setPointerButtonSupported] = useState(false);
+  const [textSubmitSupported, setTextSubmitSupported] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [authorizationRequestActive, setAuthorizationRequestActive] = useState(false);
   const [authorizationPasswordSaved, setAuthorizationPasswordSaved] = useState<boolean | undefined>(undefined);
@@ -198,6 +199,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
   const [authorizationSubmitting, setAuthorizationSubmitting] = useState(false);
   const [authorizationSubmittedAt, setAuthorizationSubmittedAt] = useState<number | null>(null);
   const [authorizationCooldownNow, setAuthorizationCooldownNow] = useState(() => Date.now());
+  const { top: topSafeArea } = useSafeAreaInsets();
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
@@ -271,6 +273,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
     releaseAll();
     socketRef.current?.close();
     setPointerButtonSupported(false);
+    setTextSubmitSupported(false);
     setConnectionState('connecting');
     setConnectionError(null);
 
@@ -313,6 +316,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
         setConnectionState('connected');
         setConnectionError(null);
         setPointerButtonSupported(supportsPointerButton(message));
+        setTextSubmitSupported(supportsTextSubmit(message));
         const readyCapabilities = readyActionCapabilities(message);
         if (readyCapabilities) setCapabilities(readyCapabilities);
         void loadCapabilities();
@@ -337,6 +341,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
       heldButtonsRef.current.clear();
       heldKeysRef.current.clear();
       setPointerButtonSupported(false);
+      setTextSubmitSupported(false);
       setAuthorizationSubmitting(false);
       setConnectionState('disconnected');
       if (hostDisconnectedRef.current) return;
@@ -617,6 +622,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
             pressPointerButton={pressPointerButton}
             releasePointerButton={releasePointerButton}
             windowDragSupported={pointerButtonSupported}
+            textSubmitSupported={textSubmitSupported}
             connected={connectionState === 'connected'}
             setNotice={setNotice}
           />
@@ -645,7 +651,8 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, onEx
         animationType="fade"
         onRequestClose={closeAuthorizationPasswordModal}
       >
-        <View style={styles.modalScrim}>
+        {/* The edge-to-edge dialog window does not resize for the IME, so keep the form in the top half. */}
+        <View style={[styles.modalScrim, { paddingTop: topSafeArea + 48 }]}>
           <View style={styles.authorizationDialog}>
             <Text style={styles.authorizationDialogTitle}>{authorizationReplacingPassword ? '重新输入此 Host 的授权密码' : '保存此 Host 的授权密码'}</Text>
             <Text style={styles.authorizationDialogBody}>密码只保存在这台手机的安全存储中，不同步。首版仅支持 ASCII。</Text>
@@ -702,6 +709,7 @@ type PadProps = {
   pressPointerButton: (button: PointerButton) => boolean;
   releasePointerButton: (button: PointerButton) => void;
   windowDragSupported: boolean;
+  textSubmitSupported: boolean;
   connected: boolean;
   setNotice: (message: string | null) => void;
 };
@@ -713,16 +721,16 @@ function PadPanel({
   pressPointerButton,
   releasePointerButton,
   windowDragSupported,
+  textSubmitSupported,
   connected,
   setNotice,
 }: PadProps) {
   const [text, setText] = useState('');
   const [dragging, setDragging] = useState(false);
   const [latchedModifiers, setLatchedModifiers] = useState<string[]>([]);
-  const [keyboardScreenY, setKeyboardScreenY] = useState<number | null>(
-    () => Keyboard.metrics()?.screenY ?? null,
+  const [keyboardHeight, setKeyboardHeight] = useState<number | null>(
+    () => Keyboard.metrics()?.height ?? null,
   );
-  const { height: windowHeight } = useWindowDimensions();
   const { bottom: bottomSafeArea } = useSafeAreaInsets();
   const gestureRef = useRef<GestureState | null>(null);
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -732,16 +740,16 @@ function PadPanel({
     (dy) => send({ type: 'wheel', dy }),
     { request: requestAnimationFrame, cancel: cancelAnimationFrame },
   ), [send]);
-  // Edge-to-edge Android windows can keep their full reported height while the IME overlays them.
-  const keyboardInset = keyboardInsetFromFrame(windowHeight, keyboardScreenY, bottomSafeArea);
+  // Edge-to-edge Android windows keep their full height while the IME overlays them.
+  const keyboardInset = keyboardInsetFor(Platform.OS, keyboardHeight, bottomSafeArea);
 
   useEffect(() => {
     const show = (event: KeyboardEvent) => {
-      setKeyboardScreenY(event.endCoordinates.screenY);
+      setKeyboardHeight(event.endCoordinates.height);
     };
     const showSubscription = Keyboard.addListener('keyboardDidShow', show);
     const frameSubscription = Keyboard.addListener('keyboardDidChangeFrame', show);
-    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setKeyboardScreenY(null));
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(null));
     return () => {
       showSubscription.remove();
       frameSubscription.remove();
@@ -938,16 +946,19 @@ function PadPanel({
     wheelSender,
   ]);
 
-  const sendText = useCallback(() => {
+  const sendText = useCallback((pressEnter: boolean) => {
     if (!text.trim()) return;
     // A latched Super or Ctrl would turn typed text into shortcuts.
     releaseLatched();
-    if (!send({ type: 'text', value: text })) {
+    const submit = pressEnter && textSubmitSupported;
+    if (!send({ type: 'text', value: text, submit })) {
       setNotice('Text was not sent because TapPad is disconnected.');
       return;
     }
     setText('');
-  }, [releaseLatched, send, setNotice, text]);
+    if (!pressEnter) setNotice('已发送文字，未按回车。');
+    else if (!submit) setNotice('已发送文字；此 Host 版本不支持发送后回车，请更新 Host 或再点 Enter。');
+  }, [releaseLatched, send, setNotice, text, textSubmitSupported]);
 
   const superLatched = latchedModifiers.includes('MetaLeft');
   return (
@@ -983,11 +994,14 @@ function PadPanel({
         />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Send text"
-          onPress={sendText}
+          accessibilityLabel="Send text and press Enter"
+          accessibilityHint="Long press to send the text without pressing Enter."
+          onPress={() => sendText(true)}
+          onLongPress={() => sendText(false)}
           style={({ pressed }) => [styles.sendButton, pressed && styles.sendButtonPressed]}
         >
           <Text style={styles.sendButtonText}>Send</Text>
+          <MaterialCommunityIcons name="keyboard-return" size={15} color={theme.color.onPrimary} />
         </Pressable>
       </View>
       <View style={styles.quickKeys}>
@@ -1277,7 +1291,7 @@ const styles = StyleSheet.create({
   padLongHint: { color: theme.color.textSubtle, fontSize: 10, marginTop: theme.space.xxs },
   textRow: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.sm },
   textInput: { flex: 1, minHeight: 46, maxHeight: 80, borderRadius: theme.radius.panel, paddingHorizontal: theme.space.md, paddingVertical: theme.space.sm, backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border, color: theme.color.text, fontSize: 13 },
-  sendButton: { width: 66, minHeight: 46, borderRadius: theme.radius.panel, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.primary },
+  sendButton: { width: 66, minHeight: 46, flexDirection: 'row', gap: 3, borderRadius: theme.radius.panel, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.primary },
   sendButtonPressed: { backgroundColor: theme.color.primaryPressed },
   sendButtonText: { color: theme.color.onPrimary, fontSize: 12, fontWeight: '800' },
   quickKeys: { flexDirection: 'row', gap: 6, marginTop: 7 },
@@ -1326,7 +1340,7 @@ const styles = StyleSheet.create({
   mediaButtonPrimaryPressed: { backgroundColor: theme.color.primaryPressed, borderColor: theme.color.primaryPressed },
   mediaLabel: { color: theme.color.textMuted, fontSize: 10, fontWeight: '700', marginTop: 7, textAlign: 'center' },
   mediaLabelPrimary: { color: theme.color.onPrimary },
-  modalScrim: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0, 0, 0, 0.36)' },
+  modalScrim: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', padding: 24, backgroundColor: 'rgba(0, 0, 0, 0.36)' },
   authorizationDialog: { width: '100%', maxWidth: 420, padding: 18, borderRadius: theme.radius.panel, backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
   authorizationDialogTitle: { color: theme.color.text, fontSize: 18, fontWeight: '800' },
   authorizationDialogBody: { color: theme.color.textMuted, fontSize: 13, lineHeight: 19, marginTop: 8 },

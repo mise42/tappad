@@ -254,6 +254,15 @@ mod tests {
             fixture["ready"]["contract"]["inputCapabilities"]["pointerButton"]["state"],
             ready["contract"]["inputCapabilities"]["pointerButton"]["state"]
         );
+        assert_eq!(
+            fixture["ready"]["contract"]["inputCapabilities"]["textSubmit"]["state"],
+            ready["contract"]["inputCapabilities"]["textSubmit"]["state"]
+        );
+        let message: crate::protocol::ClientMessage =
+            serde_json::from_value(fixture["textSubmit"].clone()).unwrap();
+        assert!(
+            matches!(message, crate::protocol::ClientMessage::Text { value, submit: true } if value == "你好")
+        );
         let message: crate::protocol::ClientMessage =
             serde_json::from_value(fixture["authorization"].clone()).unwrap();
         assert!(

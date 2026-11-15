@@ -30,7 +30,12 @@ pub enum ClientMessage {
         down: bool,
     },
     #[serde(rename = "text")]
-    Text { value: String },
+    Text {
+        value: String,
+        /// Press Enter once the text has been typed or pasted.
+        #[serde(default)]
+        submit: bool,
+    },
     #[serde(rename = "paste")]
     Paste { value: String },
     #[serde(rename = "cmd")]
@@ -145,6 +150,13 @@ mod tests {
             value["contract"]["actionCapabilities"]["workspace.1"]["state"],
             expected_workspace_state
         );
+    }
+
+    #[test]
+    fn text_without_submit_keeps_typing_without_enter() {
+        let message = serde_json::from_str::<ClientMessage>(r#"{"type":"text","value":"hi"}"#)
+            .expect("legacy text message");
+        assert!(matches!(message, ClientMessage::Text { value, submit: false } if value == "hi"));
     }
 
     #[test]

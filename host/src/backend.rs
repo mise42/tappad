@@ -42,6 +42,7 @@ use crate::{
 static MOBILE_ASSETS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../mobile");
 static CLIENT_COUNTER: AtomicU64 = AtomicU64::new(0);
 const PASTE_TEXT_LIMIT_BYTES: usize = 12_000;
+const PASTE_SUBMIT_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
 
 #[derive(Debug, serde::Deserialize)]
 struct WsQuery {
@@ -404,7 +405,7 @@ async fn apply_backend_effect(
             }
             client_input.record(&effect);
         }
-        BackendEffect::Text { value } => {
+        BackendEffect::Text { value, submit } => {
             let mut input = state.input.lock().await;
             let has_non_typeable = value.chars().any(|ch| !input.is_typeable(ch));
             if has_non_typeable {
@@ -412,9 +413,20 @@ async fn apply_backend_effect(
                 tokio::spawn(async move {
                     if let Err(error) = do_paste(state.input.clone(), value).await {
                         warn!("text paste fallback failed: {error}");
+                        return;
+                    }
+                    if submit {
+                        // Wayland apps fetch pasted text asynchronously; let it land before Enter.
+                        tokio::time::sleep(PASTE_SUBMIT_DELAY).await;
+                        if let Err(error) = state.input.lock().await.tap("Enter") {
+                            warn!("text submit failed: {error}");
+                        }
                     }
                 });
-            } else if let Err(error) = input.type_text(&value) {
+            } else if let Err(error) = input
+                .type_text(&value)
+                .and_then(|()| if submit { input.tap("Enter") } else { Ok(()) })
+            {
                 warn!("text failed: {error}");
                 return Some(input_error("text", error));
             }

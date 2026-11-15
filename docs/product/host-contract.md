@@ -19,7 +19,8 @@ the authenticated WebSocket `ready` message:
   "version": 1,
   "protocolVersion": 2,
   "inputCapabilities": {
-    "pointerButton": { "state": "supported" }
+    "pointerButton": { "state": "supported" },
+    "textSubmit": { "state": "supported" }
   },
   "actionCapabilities": {
     "screenshot": { "state": "supported" },
@@ -62,3 +63,12 @@ on the advertisement for compatibility with older Hosts. Names are bounded,
 control characters are removed, and names are display metadata, not identity proof.
 A `disconnected` message announces a user-requested session close. Updated native
 clients stop automatic retries until the user taps Reconnect. Pairing is retained.
+
+### Text submit
+
+A `text` message may set the additive `submit: true` field to press Enter once
+the text has been typed, or, for text the Host pastes through the clipboard,
+shortly after the paste. `inputCapabilities.textSubmit` advertises support.
+Clients must not set `submit` unless the Host advertises it, because older Hosts
+ignore the field and type the text without Enter. A missing `submit` means
+`false`.

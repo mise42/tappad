@@ -38,6 +38,8 @@ impl InputCapabilityStatus {
 pub struct InputCapabilities {
     #[serde(rename = "pointerButton")]
     pub pointer_button: InputCapabilityStatus,
+    #[serde(rename = "textSubmit")]
+    pub text_submit: InputCapabilityStatus,
 }
 
 pub fn input_capabilities() -> InputCapabilities {
@@ -45,6 +47,10 @@ pub fn input_capabilities() -> InputCapabilities {
     {
         InputCapabilities {
             pointer_button: InputCapabilityStatus {
+                state: "supported",
+                note: None,
+            },
+            text_submit: InputCapabilityStatus {
                 state: "supported",
                 note: None,
             },
@@ -57,6 +63,10 @@ pub fn input_capabilities() -> InputCapabilities {
             pointer_button: InputCapabilityStatus {
                 state: "unsupported",
                 note: Some("Pointer button hold is unavailable on this target backend."),
+            },
+            text_submit: InputCapabilityStatus {
+                state: "unsupported",
+                note: Some("Text input is unavailable on this target backend."),
             },
         }
     }

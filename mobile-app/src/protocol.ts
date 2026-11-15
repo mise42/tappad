@@ -5,7 +5,7 @@ export type TapPadMessage =
   | { type: 'click'; button: 'left' | 'right' | 'middle'; clickCount?: number }
   | { type: 'pointerButton'; button: PointerButton; down: boolean }
   | { type: 'key'; code: string; down: boolean }
-  | { type: 'text'; value: string }
+  | { type: 'text'; value: string; submit?: boolean }
   | { type: 'paste'; value: string }
   | { type: 'cmd'; action: string }
   | { type: 'authorize'; password: string };
@@ -62,6 +62,7 @@ export type InputCapability = {
 
 export type InputCapabilities = {
   pointerButton?: InputCapability;
+  textSubmit?: InputCapability;
 };
 
 export type ServerMessage = {
@@ -121,16 +122,24 @@ export function releaseInputMessages(
 }
 
 export function supportsPointerButton(message: ServerMessage) {
+  return supportsInputCapability(message, 'pointerButton');
+}
+
+export function supportsTextSubmit(message: ServerMessage) {
+  return supportsInputCapability(message, 'textSubmit');
+}
+
+function supportsInputCapability(message: ServerMessage, capability: keyof InputCapabilities) {
   const contract = understoodContract(message.contract);
   if (contract) {
     return (
       (contract.protocolVersion ?? 0) >= 2 &&
-      contract.inputCapabilities?.pointerButton?.state === 'supported'
+      contract.inputCapabilities?.[capability]?.state === 'supported'
     );
   }
   return (
     (message.protocolVersion ?? 0) >= 2 &&
-    message.inputCapabilities?.pointerButton?.state === 'supported'
+    message.inputCapabilities?.[capability]?.state === 'supported'
   );
 }
 

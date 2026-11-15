@@ -6,5 +6,6 @@
   "pairingUrl": "http://tappad-host-id.local:8765/?token=pair-token",
   "authorization": { "type": "authorize", "password": "fixture-only" },
   "result": { "type": "authorizationResult", "status": "submitted", "message": "Input submitted." },
-  "ready": { "type": "ready", "protocolVersion": 2, "contract": { "version": 1, "protocolVersion": 2, "inputCapabilities": { "pointerButton": { "state": "supported" } } } }
+  "textSubmit": { "type": "text", "value": "你好", "submit": true },
+  "ready": { "type": "ready", "protocolVersion": 2, "contract": { "version": 1, "protocolVersion": 2, "inputCapabilities": { "pointerButton": { "state": "supported" }, "textSubmit": { "state": "supported" } } } }
 }
