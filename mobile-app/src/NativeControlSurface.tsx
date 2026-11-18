@@ -78,6 +78,8 @@ type Props = {
 
 type TouchLike = { pageX: number; pageY: number };
 
+const NOTICE_DURATION_MS = 4_000;
+
 const TABS: { id: Panel; label: string }[] = [
   { id: 'pad', label: 'Pad' },
   { id: 'keys', label: 'Keys' },
@@ -113,42 +115,42 @@ const ACTION_GROUPS = [
   {
     title: 'Recording',
     actions: [
-      ['Record screen', 'screenrecord.screen'],
-      ['Record window', 'screenrecord.window'],
-      ['Record + audio', 'screenrecord.screen.audio'],
-      ['Record + camera', 'screenrecord.screen.webcam'],
-      ['Stop recording', 'screenrecord.stop'],
-      ['Open recordings', 'open_recordings_folder'],
+      ['Record screen', 'screenrecord.screen', 'Started recording the screen'],
+      ['Record window', 'screenrecord.window', 'Started recording the current window'],
+      ['Record + audio', 'screenrecord.screen.audio', 'Started recording the screen with audio'],
+      ['Record + camera', 'screenrecord.screen.webcam', 'Started recording the screen with camera'],
+      ['Stop recording', 'screenrecord.stop', 'Stopped recording'],
+      ['Open recordings', 'open_recordings_folder', 'Opened the recordings folder'],
     ],
   },
   {
     title: 'Desktop',
     actions: [
-      ['Screenshot', 'screenshot'],
-      ['Close window', 'close_window'],
-      ['App launcher', 'app_launcher'],
-      ['Lock screen', 'lock_screen'],
+      ['Screenshot', 'screenshot', 'Started a screenshot'],
+      ['Close window', 'close_window', 'Closed the current window'],
+      ['App launcher', 'app_launcher', 'Toggled the app launcher'],
+      ['Lock screen', 'lock_screen', 'Locked the screen'],
     ],
   },
 ] as const;
 
 type MaterialIconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
 
-const MEDIA_GROUPS: { title: string; actions: { icon: MaterialIconName; label: string; action: string; primary?: boolean }[] }[] = [
+const MEDIA_GROUPS: { title: string; actions: { icon: MaterialIconName; label: string; action: string; done: string; primary?: boolean }[] }[] = [
   {
     title: 'Playback',
     actions: [
-      { icon: 'skip-previous', label: 'Previous', action: 'media.prev' },
-      { icon: 'play-pause', label: 'Play / pause', action: 'media.play_pause', primary: true },
-      { icon: 'skip-next', label: 'Next', action: 'media.next' },
+      { icon: 'skip-previous', label: 'Previous', action: 'media.prev', done: 'Previous track' },
+      { icon: 'play-pause', label: 'Play / pause', action: 'media.play_pause', done: 'Toggled play / pause', primary: true },
+      { icon: 'skip-next', label: 'Next', action: 'media.next', done: 'Next track' },
     ],
   },
   {
     title: 'Volume',
     actions: [
-      { icon: 'volume-minus', label: 'Volume down', action: 'media.volume_down' },
-      { icon: 'volume-mute', label: 'Mute', action: 'media.mute' },
-      { icon: 'volume-plus', label: 'Volume up', action: 'media.volume_up' },
+      { icon: 'volume-minus', label: 'Volume down', action: 'media.volume_down', done: 'Turned the volume down' },
+      { icon: 'volume-mute', label: 'Mute', action: 'media.mute', done: 'Toggled mute' },
+      { icon: 'volume-plus', label: 'Volume up', action: 'media.volume_up', done: 'Turned the volume up' },
     ],
   },
 ];
@@ -380,6 +382,12 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
   }, [loadCapabilities]);
 
   useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), NOTICE_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
     if (!authorizationRequestActive) setAuthorizationSubmittedAt(null);
   }, [authorizationRequestActive]);
 
@@ -442,6 +450,8 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
     now: authorizationCooldownNow,
   });
   const authorizationCoolingDown = authorizationRecovery === 'cooldown';
+  const authorizationReady = authorizationRequestActive && connectionState === 'connected';
+  const authorizationDisabled = !authorizationReady || authorizationSubmitting || authorizationCoolingDown || authorizationPasswordSaved === undefined;
 
   const authorize = useCallback(async () => {
     if (!authorizationRequestActive || connectionState !== 'connected' || authorizationSubmitting) return;
@@ -499,7 +509,8 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
     setPanel(next);
   }, [releaseAll]);
 
-  const sendAction = useCallback((label: string, action: string) => {
+  // `done` names what happened, such as "Switched to workspace 2", rather than a generic "sent".
+  const sendAction = useCallback((label: string, action: string, done: string) => {
     const capability = capabilities?.[action];
     if (!capability) {
       setNotice(`${label} is unavailable because this host did not advertise the action.`);
@@ -513,7 +524,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
       setNotice(`${label} was not sent because TapPad is disconnected.`);
       return;
     }
-    setNotice(`${label} sent to ${hostName}.`);
+    setNotice(`${done} on ${hostName}.`);
   }, [capabilities, hostName, send]);
 
   return (
@@ -542,14 +553,36 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
             </Text>
           </View>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Reconnect"
-          onPress={() => { hostDisconnectedRef.current = false; connectSocket(); }}
-          style={({ pressed }) => [styles.iconButton, styles.reconnectButton, pressed && styles.controlPressed]}
-        >
-          <MaterialCommunityIcons name="refresh" color={theme.color.textStrong} size={21} />
-        </Pressable>
+        <View style={styles.topBarActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Submit the current Omarchy authorization request"
+            accessibilityHint={authorizationSubmitting ? 'Submitting' : authorizationCoolingDown ? 'Please wait' : authorizationRequestActive ? 'Request pending' : 'No request'}
+            accessibilityState={{ disabled: authorizationDisabled }}
+            disabled={authorizationDisabled}
+            onPress={() => void authorize()}
+            style={({ pressed }) => [
+              styles.authorizationButton,
+              authorizationReady && styles.authorizationButtonActive,
+              pressed && styles.authorizationButtonPressed,
+            ]}
+          >
+            <MaterialCommunityIcons
+              name="shield-key-outline"
+              size={18}
+              color={authorizationReady ? theme.color.onPrimary : theme.color.textSubtle}
+            />
+            {authorizationReady ? <Text style={styles.authorizationButtonTextActive}>Authorize</Text> : null}
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Reconnect"
+            onPress={() => { hostDisconnectedRef.current = false; connectSocket(); }}
+            style={({ pressed }) => [styles.iconButton, styles.reconnectButton, pressed && styles.controlPressed]}
+          >
+            <MaterialCommunityIcons name="refresh" color={theme.color.textStrong} size={21} />
+          </Pressable>
+        </View>
       </View>
 
       {connectionError ? <Text style={styles.bannerError}>{connectionError}</Text> : null}
@@ -567,33 +600,6 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
           </Pressable>
         ))}
       </View>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Submit the current Omarchy authorization request"
-        accessibilityState={{ disabled: !authorizationRequestActive || connectionState !== 'connected' || authorizationSubmitting || authorizationCoolingDown || authorizationPasswordSaved === undefined }}
-        disabled={!authorizationRequestActive || connectionState !== 'connected' || authorizationSubmitting || authorizationCoolingDown || authorizationPasswordSaved === undefined}
-        onPress={() => void authorize()}
-        style={({ pressed }) => [
-          styles.authorizationButton,
-          authorizationRequestActive && connectionState === 'connected' && styles.authorizationButtonActive,
-          pressed && styles.authorizationButtonPressed,
-        ]}
-      >
-        <MaterialCommunityIcons
-          name="shield-key-outline"
-          size={18}
-          color={authorizationRequestActive && connectionState === 'connected' ? theme.color.onPrimary : theme.color.textSubtle}
-        />
-        <Text style={[
-          styles.authorizationButtonText,
-          authorizationRequestActive && connectionState === 'connected' && styles.authorizationButtonTextActive,
-        ]}>Authorize</Text>
-        <Text style={[
-          styles.authorizationButtonState,
-          authorizationRequestActive && connectionState === 'connected' && styles.authorizationButtonTextActive,
-        ]}>{authorizationSubmitting ? 'Submitting' : authorizationCoolingDown ? 'Please wait' : authorizationRequestActive ? 'Request pending' : 'No request'}</Text>
-      </Pressable>
 
       {authorizationRecovery === 'cooldown' ? (
         <Text style={styles.authorizationRecoveryHint}>Submitted. Password retry will be available shortly.</Text>
@@ -622,6 +628,8 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
             textSubmitSupported={textSubmitSupported}
             connected={connectionState === 'connected'}
             setNotice={setNotice}
+            capabilities={capabilities}
+            sendAction={sendAction}
           />
         ) : null}
         {panel === 'keys' ? <KeysPanel pressKey={pressKey} releaseKey={releaseKey} releaseAll={releaseAll} /> : null}
@@ -633,13 +641,13 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
           />
         ) : null}
         {panel === 'media' ? <MediaPanel sendAction={sendAction} /> : null}
+        {/* A floating toast takes no room from the panel and lets touches through, so the touchpad keeps its height. */}
+        {notice ? (
+          <View pointerEvents="none" accessibilityLiveRegion="polite" style={styles.notice}>
+            <Text style={styles.noticeText}>{notice}</Text>
+          </View>
+        ) : null}
       </View>
-
-      {notice ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss message" onPress={() => setNotice(null)} style={styles.notice}>
-          <Text style={styles.noticeText}>{notice}</Text>
-        </Pressable>
-      ) : null}
 
       <Modal
         visible={authorizationModalOpen}
@@ -708,6 +716,8 @@ type PadProps = {
   textSubmitSupported: boolean;
   connected: boolean;
   setNotice: (message: string | null) => void;
+  capabilities: ActionCapabilities | null;
+  sendAction: (label: string, action: string, done: string) => void;
 };
 
 function PadPanel({
@@ -720,10 +730,17 @@ function PadPanel({
   textSubmitSupported,
   connected,
   setNotice,
+  capabilities,
+  sendAction,
 }: PadProps) {
   const [text, setText] = useState('');
   const [dragging, setDragging] = useState(false);
   const [latchedModifiers, setLatchedModifiers] = useState<string[]>([]);
+  const workspaceActions = supportedWorkspaceActions(capabilities);
+  const moveWindowActions = supportedMoveWindowActions(capabilities);
+  const [moveWindowMode, setMoveWindowMode] = useState(false);
+  const moving = moveWindowMode && moveWindowActions.length > 0;
+  const workspaceButtons = moving ? moveWindowActions : workspaceActions;
   const [keyboardHeight, setKeyboardHeight] = useState<number | null>(
     () => Keyboard.metrics()?.height ?? null,
   );
@@ -965,6 +982,41 @@ function PadPanel({
   const superLatched = latchedModifiers.includes('MetaLeft');
   return (
     <View style={[styles.padPanel, keyboardInset > 0 && { paddingBottom: keyboardInset + theme.space.sm }]}>
+      {workspaceActions.length > 0 ? (
+        <View style={styles.workspaceRow}>
+          {workspaceButtons.map(({ label, action }) => (
+            <Pressable
+              key={action}
+              accessibilityRole="button"
+              accessibilityLabel={moving ? `Move window to workspace ${label}` : `Switch to workspace ${label}`}
+              onPress={() => {
+                if (moving) {
+                  setMoveWindowMode(false);
+                  sendAction(`Move window to ${label}`, action, `Moved the current window to workspace ${label}`);
+                } else {
+                  sendAction(`Workspace ${label}`, action, `Switched to workspace ${label}`);
+                }
+              }}
+              style={({ pressed }) => [styles.workspaceNumberButton, moving && styles.workspaceNumberButtonMoving, pressed && styles.actionButtonPressed]}
+            >
+              <Text style={[styles.workspaceNumberText, moving && styles.workspaceNumberTextMoving]}>{label}</Text>
+            </Pressable>
+          ))}
+          {moveWindowActions.length > 0 ? (
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityLabel="Move window mode"
+              accessibilityHint="When on, the next workspace number moves the current window there"
+              accessibilityState={{ checked: moving }}
+              onPress={() => setMoveWindowMode((on) => !on)}
+              style={({ pressed }) => [styles.moveWindowToggle, moving && styles.moveWindowToggleActive, pressed && styles.actionButtonPressed]}
+            >
+              <MaterialCommunityIcons name="arrow-right-bold-box-outline" size={16} color={moving ? theme.color.onPrimary : theme.color.textStrong} />
+              <Text style={[styles.moveWindowToggleText, moving && styles.moveWindowToggleTextActive]}>Move</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
       <View
         {...panResponder.panHandlers}
         accessibilityRole="adjustable"
@@ -972,17 +1024,32 @@ function PadPanel({
         style={[styles.touchPad, !connected && styles.controlDisabled, dragging && styles.touchPadDragging]}
       >
         <View style={styles.padGuide}>
-          <Text style={styles.padHint}>{dragging ? 'Dragging' : 'Move · Tap · Two-finger scroll'}</Text>
+          <Text style={styles.padHint}>{dragging ? 'Dragging' : moving ? 'Pick a workspace above' : 'Move · Tap · Two-finger scroll'}</Text>
           <Text style={styles.padLongHint}>
             {dragging
               ? 'Release to drop'
-              : superLatched
+              : moving
+                ? 'The current window moves there'
+                : superLatched
                 ? 'Super held: tap, then hold to move a window'
                 : 'Tap, then hold to drag · Two-finger tap: right click'}
           </Text>
         </View>
       </View>
 
+      <View style={styles.quickKeys}>
+        {[['Super', 'MetaLeft'], ['Alt', 'AltLeft'], ['Ctrl', 'ControlLeft'], ['Shift', 'ShiftLeft']].map(([label, code]) => (
+          <LatchKeyButton
+            key={code}
+            label={label}
+            latched={latchedModifiers.includes(code)}
+            onPress={() => toggleModifier(code)}
+          />
+        ))}
+        {[['Enter', 'Enter'], ['⌫', 'Backspace']].map(([label, code]) => (
+          <KeyButton key={code} label={label} code={code} onDown={pressKey} onUp={releaseQuickKey} compact />
+        ))}
+      </View>
       <View style={styles.textRow}>
         <TextInput
           value={text}
@@ -1005,19 +1072,6 @@ function PadPanel({
           <Text style={styles.sendButtonText}>Send</Text>
           <MaterialCommunityIcons name="keyboard-return" size={15} color={theme.color.onPrimary} />
         </Pressable>
-      </View>
-      <View style={styles.quickKeys}>
-        {[['Super', 'MetaLeft'], ['Alt', 'AltLeft'], ['Ctrl', 'ControlLeft'], ['Shift', 'ShiftLeft']].map(([label, code]) => (
-          <LatchKeyButton
-            key={code}
-            label={label}
-            latched={latchedModifiers.includes(code)}
-            onPress={() => toggleModifier(code)}
-          />
-        ))}
-        {[['Enter', 'Enter'], ['⌫', 'Backspace']].map(([label, code]) => (
-          <KeyButton key={code} label={label} code={code} onDown={pressKey} onUp={releaseQuickKey} compact />
-        ))}
       </View>
     </View>
   );
@@ -1104,15 +1158,10 @@ function KeysPanel({ pressKey, releaseKey, releaseAll }: {
 function ActionsPanel({ capabilities, capabilityError, sendAction }: {
   capabilities: ActionCapabilities | null;
   capabilityError: string | null;
-  sendAction: (label: string, action: string) => void;
+  sendAction: (label: string, action: string, done: string) => void;
 }) {
   const [viewportHeight, setViewportHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
-  const workspaceActions = supportedWorkspaceActions(capabilities);
-  const moveWindowActions = supportedMoveWindowActions(capabilities);
-  const [moveWindowMode, setMoveWindowMode] = useState(false);
-  const moving = moveWindowMode && moveWindowActions.length > 0;
-  const workspaceButtons = moving ? moveWindowActions : workspaceActions;
 
   return (
     <ScrollView
@@ -1124,53 +1173,11 @@ function ActionsPanel({ capabilities, capabilityError, sendAction }: {
     >
       {!capabilities && !capabilityError ? <Text style={styles.sectionBody}>Checking availability…</Text> : null}
       {capabilityError ? <Text style={styles.inlineWarning}>Availability check failed: {capabilityError}</Text> : null}
-      {workspaceActions.length > 0 ? (
-        <View style={styles.actionGroup}>
-          <View style={styles.workspaceHeader}>
-            <Text style={styles.groupTitle}>Workspaces</Text>
-            {moveWindowActions.length > 0 ? (
-              <Pressable
-                accessibilityRole="switch"
-                accessibilityLabel="Move window mode"
-                accessibilityHint="When on, the next workspace number moves the current window there"
-                accessibilityState={{ checked: moving }}
-                onPress={() => setMoveWindowMode((on) => !on)}
-                style={({ pressed }) => [styles.moveWindowToggle, moving && styles.moveWindowToggleActive, pressed && styles.actionButtonPressed]}
-              >
-                <Text style={[styles.moveWindowToggleText, moving && styles.moveWindowToggleTextActive]}>Move window</Text>
-              </Pressable>
-            ) : null}
-          </View>
-          {moving ? <Text style={styles.workspaceHint}>Tap a workspace to move the current window there.</Text> : null}
-          <View style={styles.workspaceControls}>
-            <View style={styles.workspaceNumberRow}>
-              {workspaceButtons.map(({ label, action }) => (
-                <Pressable
-                  key={action}
-                  accessibilityRole="button"
-                  accessibilityLabel={moving ? `Move window to workspace ${label}` : `Switch to workspace ${label}`}
-                  onPress={() => {
-                    if (moving) {
-                      setMoveWindowMode(false);
-                      sendAction(`Move window to ${label}`, action);
-                    } else {
-                      sendAction(`Workspace ${label}`, action);
-                    }
-                  }}
-                  style={({ pressed }) => [styles.workspaceNumberButton, moving && styles.workspaceNumberButtonMoving, pressed && styles.actionButtonPressed]}
-                >
-                  <Text style={[styles.workspaceNumberText, moving && styles.workspaceNumberTextMoving]}>{label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        </View>
-      ) : null}
       {ACTION_GROUPS.map((group) => (
         <View key={group.title} style={styles.actionGroup}>
           <Text style={styles.groupTitle}>{group.title}</Text>
           <View style={styles.actionGrid}>
-            {group.actions.map(([label, action]) => {
+            {group.actions.map(([label, action, done]) => {
               const capability = capabilities?.[action];
               if (capability?.state === 'hidden') return null;
               const unavailable = capability?.state !== 'supported';
@@ -1179,7 +1186,7 @@ function ActionsPanel({ capabilities, capabilityError, sendAction }: {
                   key={action}
                   accessibilityRole="button"
                   accessibilityState={{ disabled: unavailable }}
-                  onPress={() => sendAction(label, action)}
+                  onPress={() => sendAction(label, action, done)}
                   style={({ pressed }) => [
                     styles.actionButton,
                     group.title === 'Desktop' && styles.desktopActionButton,
@@ -1199,7 +1206,7 @@ function ActionsPanel({ capabilities, capabilityError, sendAction }: {
   );
 }
 
-function MediaPanel({ sendAction }: { sendAction: (label: string, action: string) => void }) {
+function MediaPanel({ sendAction }: { sendAction: (label: string, action: string, done: string) => void }) {
   return (
     <View style={styles.mediaPanel}>
       <View style={styles.sectionHeader}>
@@ -1210,12 +1217,12 @@ function MediaPanel({ sendAction }: { sendAction: (label: string, action: string
         <View key={group.title} style={styles.mediaGroup}>
           <Text style={styles.groupTitle}>{group.title}</Text>
           <View style={styles.mediaRow}>
-            {group.actions.map(({ icon, label, action, primary }) => (
+            {group.actions.map(({ icon, label, action, done, primary }) => (
               <Pressable
                 key={action}
                 accessibilityRole="button"
                 accessibilityLabel={label}
-                onPress={() => sendAction(label, action)}
+                onPress={() => sendAction(label, action, done)}
                 style={({ pressed }) => [
                   styles.mediaButton,
                   primary && styles.mediaButtonPrimary,
@@ -1248,7 +1255,7 @@ const styles = StyleSheet.create({
   statusDotError: { backgroundColor: theme.color.danger },
   statusLabel: { color: theme.color.textSubtle, fontSize: 10, fontWeight: '600' },
   statusLabelAttention: { color: theme.color.textMuted },
-  reconnectButton: { width: 76, justifyContent: 'flex-end', paddingHorizontal: 8 },
+  reconnectButton: { width: 36, justifyContent: 'flex-end', paddingHorizontal: 8 },
   controlPressed: { opacity: 0.58 },
   bannerError: { color: theme.color.danger, backgroundColor: theme.color.dangerSurface, paddingHorizontal: 14, paddingVertical: 9, fontSize: 13 },
   tabBar: { flexDirection: 'row', marginHorizontal: theme.space.md, marginTop: theme.space.xs, padding: theme.space.xxs, backgroundColor: theme.color.surfaceMuted, borderRadius: theme.radius.pad },
@@ -1257,20 +1264,20 @@ const styles = StyleSheet.create({
   tabPressed: { backgroundColor: theme.color.surfacePressed },
   tabText: { color: theme.color.textSubtle, fontSize: 12, fontWeight: '700' },
   tabTextActive: { color: theme.color.text },
-  authorizationButton: { minHeight: 46, marginHorizontal: 14, marginTop: 8, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: theme.radius.control, backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
-  authorizationButtonActive: { backgroundColor: theme.color.primary, borderColor: theme.color.primary },
+  topBarActions: { minWidth: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
+  authorizationButton: { minWidth: 36, height: 32, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: theme.radius.control },
+  authorizationButtonActive: { backgroundColor: theme.color.primary },
   authorizationButtonPressed: { opacity: 0.82 },
-  authorizationButtonText: { color: theme.color.textSubtle, fontSize: 13, fontWeight: '800' },
-  authorizationButtonTextActive: { color: theme.color.onPrimary },
-  authorizationButtonState: { marginLeft: 'auto', color: theme.color.textSubtle, fontSize: 11, fontWeight: '700' },
+  authorizationButtonTextActive: { color: theme.color.onPrimary, fontSize: 12, fontWeight: '800' },
   authorizationRecoveryHint: { marginHorizontal: 16, marginTop: 5, color: theme.color.textSubtle, fontSize: 11 },
   authorizationReplaceButton: { minHeight: 40, marginHorizontal: 14, marginTop: 6, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: theme.radius.control, backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.borderStrong },
   authorizationReplaceText: { color: theme.color.textStrong, fontSize: 12, fontWeight: '700' },
   panelContainer: { flex: 1, marginTop: 7 },
-  notice: { marginHorizontal: theme.space.md, marginBottom: theme.space.sm, paddingHorizontal: 13, paddingVertical: 9, borderRadius: theme.radius.panel, backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
-  noticeText: { color: theme.color.textMuted, fontSize: 12, lineHeight: 17 },
+  // Sits just below the Pad's workspace row, over the empty top of the touchpad.
+  notice: { position: 'absolute', top: 56, left: theme.space.lg + theme.space.sm, right: theme.space.lg + theme.space.sm, alignItems: 'center', paddingHorizontal: 13, paddingVertical: 8, borderRadius: theme.radius.panel, backgroundColor: theme.color.primary },
+  noticeText: { color: theme.color.onPrimary, fontSize: 12, lineHeight: 17, textAlign: 'center' },
   padPanel: { flex: 1, paddingHorizontal: theme.space.md, paddingBottom: theme.space.sm },
-  touchPad: { flex: 1, minHeight: 250, borderRadius: theme.radius.pad, overflow: 'hidden', alignItems: 'center', backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
+  touchPad: { flex: 1, minHeight: 96, borderRadius: theme.radius.pad, overflow: 'hidden', alignItems: 'center', backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
   touchPadDragging: { borderColor: theme.color.borderStrong, backgroundColor: theme.color.surfacePressed },
   controlDisabled: { opacity: 0.58 },
   padGuide: { position: 'absolute', bottom: 15, alignItems: 'center' },
@@ -1281,7 +1288,7 @@ const styles = StyleSheet.create({
   sendButton: { width: 66, minHeight: 46, flexDirection: 'row', gap: 3, borderRadius: theme.radius.panel, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.primary },
   sendButtonPressed: { backgroundColor: theme.color.primaryPressed },
   sendButtonText: { color: theme.color.onPrimary, fontSize: 12, fontWeight: '800' },
-  quickKeys: { flexDirection: 'row', gap: 6, marginTop: 7 },
+  quickKeys: { flexDirection: 'row', gap: 6, marginTop: theme.space.sm },
   keyButton: { flex: 1, minWidth: 46, minHeight: 44, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
   keyButtonCompact: { minWidth: 0, minHeight: 40 },
   keyButtonPressed: { backgroundColor: theme.color.surfacePressed, borderColor: theme.color.borderStrong },
@@ -1309,15 +1316,12 @@ const styles = StyleSheet.create({
   actionButtonUnavailable: { backgroundColor: theme.color.warningSurface, borderColor: theme.color.warningBorder },
   actionButtonText: { color: theme.color.textStrong, fontSize: 13, fontWeight: '700' },
   actionStateUnavailable: { color: theme.color.warning, fontSize: 10, fontWeight: '700', marginTop: 4 },
-  workspaceControls: { marginTop: 8 },
-  workspaceHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 30 },
-  workspaceHint: { marginTop: 6, color: theme.color.textMuted, fontSize: 12 },
-  moveWindowToggle: { minHeight: 30, paddingHorizontal: 10, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
+  workspaceRow: { flexDirection: 'row', gap: 6, marginBottom: theme.space.sm },
+  moveWindowToggle: { minHeight: 40, paddingHorizontal: 10, flexDirection: 'row', gap: 4, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
   moveWindowToggleActive: { backgroundColor: theme.color.primary, borderColor: theme.color.primary },
   moveWindowToggleText: { color: theme.color.textStrong, fontSize: 12, fontWeight: '700' },
   moveWindowToggleTextActive: { color: theme.color.onPrimary },
-  workspaceNumberRow: { flexDirection: 'row', gap: 8 },
-  workspaceNumberButton: { flex: 1, minHeight: 48, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
+  workspaceNumberButton: { flex: 1, minHeight: 40, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
   workspaceNumberText: { color: theme.color.textStrong, fontSize: 15, fontWeight: '800' },
   workspaceNumberButtonMoving: { backgroundColor: theme.color.primary, borderColor: theme.color.primary },
   workspaceNumberTextMoving: { color: theme.color.onPrimary },
