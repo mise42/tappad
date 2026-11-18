@@ -30,15 +30,6 @@ import {
   shouldMaskAuthorizationPassword,
 } from './authorization';
 import {
-  CODEX_VOICE_RECORD_ACTION,
-  CODEX_VOICE_END_ACTION,
-  CODEX_VOICE_MICROPHONE_ACTION,
-  codexVoiceControl,
-  codexVoiceResultNotice,
-  codexVoiceSentNotice,
-  isCodexVoiceAction,
-} from './codexVoice';
-import {
   beginGesture,
   centroid,
   DOUBLE_TAP_WINDOW_MS,
@@ -171,15 +162,6 @@ function statusText(state: ConnectionState) {
     case 'connecting': return 'Connecting…';
     case 'error': return 'Connection error';
     default: return 'Disconnected';
-  }
-}
-
-function codexVoiceIcon(action: string): ComponentProps<typeof MaterialCommunityIcons>['name'] {
-  switch (action) {
-    case CODEX_VOICE_RECORD_ACTION: return 'account-voice';
-    case CODEX_VOICE_END_ACTION: return 'phone-hangup';
-    case CODEX_VOICE_MICROPHONE_ACTION: return 'microphone-off';
-    default: return 'microphone-outline';
   }
 }
 
@@ -317,10 +299,6 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
           }
           setNotice(authorizationResultNotice(message.status, message.message));
           void loadCapabilities();
-          return;
-        }
-        if (message.type === 'actionResult' && isCodexVoiceAction(message.action)) {
-          setNotice(codexVoiceResultNotice(message.action, message.status, message.message));
           return;
         }
         if (message.type !== 'ready') return;
@@ -520,7 +498,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
     setPanel(next);
   }, [releaseAll]);
 
-  const sendAction = useCallback((label: string, action: string, sentNotice?: string) => {
+  const sendAction = useCallback((label: string, action: string) => {
     const capability = capabilities?.[action];
     if (!capability) {
       setNotice(`${label} is unavailable because this host did not advertise the action.`);
@@ -534,7 +512,7 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
       setNotice(`${label} was not sent because TapPad is disconnected.`);
       return;
     }
-    setNotice(sentNotice ?? `${label} sent to ${hostName}.`);
+    setNotice(`${label} sent to ${hostName}.`);
   }, [capabilities, hostName, send]);
 
   return (
@@ -650,7 +628,6 @@ export function NativeControlSurface({ hostId, host, hostName, port, token, fing
           <ActionsPanel
             capabilities={capabilities}
             capabilityError={capabilityError}
-            hostName={hostName}
             sendAction={sendAction}
           />
         ) : null}
@@ -1123,16 +1100,14 @@ function KeysPanel({ pressKey, releaseKey, releaseAll }: {
   );
 }
 
-function ActionsPanel({ capabilities, capabilityError, hostName, sendAction }: {
+function ActionsPanel({ capabilities, capabilityError, sendAction }: {
   capabilities: ActionCapabilities | null;
   capabilityError: string | null;
-  hostName: string;
-  sendAction: (label: string, action: string, sentNotice?: string) => void;
+  sendAction: (label: string, action: string) => void;
 }) {
   const [viewportHeight, setViewportHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
   const workspaceActions = supportedWorkspaceActions(capabilities);
-  const codexVoice = codexVoiceControl(capabilities);
 
   return (
     <ScrollView
@@ -1162,51 +1137,6 @@ function ActionsPanel({ capabilities, capabilityError, hostName, sendAction }: {
               ))}
             </View>
           </View>
-        </View>
-      ) : null}
-      {codexVoice ? (
-        <View style={styles.actionGroup}>
-          <Text style={styles.groupTitle}>Codex</Text>
-          <View style={styles.codexActionRow}>
-            {codexVoice.actions.map((action) => (
-              <Pressable
-                key={action.action}
-                accessibilityRole="button"
-                accessibilityLabel={`${action.label} Codex voice`}
-                accessibilityHint={action.detail}
-                accessibilityState={{ disabled: !action.enabled }}
-                disabled={!action.enabled}
-                onPress={() => sendAction(
-                  action.label,
-                  action.action,
-                  codexVoiceSentNotice(action.action, hostName),
-                )}
-                style={({ pressed }) => [
-                  styles.codexActionButton,
-                  !action.enabled && styles.codexActionButtonUnavailable,
-                  pressed && styles.actionButtonPressed,
-                ]}
-              >
-                <MaterialCommunityIcons
-                  name={codexVoiceIcon(action.action)}
-                  color={action.enabled ? theme.color.textStrong : theme.color.textSubtle}
-                  size={18}
-                />
-                <Text style={[
-                  styles.codexActionLabel,
-                  !action.enabled && styles.codexActionLabelUnavailable,
-                ]}>
-                  {action.label}
-                </Text>
-                {action.disabledLabel ? (
-                  <Text style={styles.codexActionState}>{action.disabledLabel}</Text>
-                ) : null}
-              </Pressable>
-            ))}
-          </View>
-          {codexVoice.foregroundRequired ? (
-            <Text style={styles.codexForegroundHint}>App controls require Codex foreground.</Text>
-          ) : null}
         </View>
       ) : null}
       {ACTION_GROUPS.map((group) => (
@@ -1352,13 +1282,6 @@ const styles = StyleSheet.create({
   actionButtonUnavailable: { backgroundColor: theme.color.warningSurface, borderColor: theme.color.warningBorder },
   actionButtonText: { color: theme.color.textStrong, fontSize: 13, fontWeight: '700' },
   actionStateUnavailable: { color: theme.color.warning, fontSize: 10, fontWeight: '700', marginTop: 4 },
-  codexActionRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  codexActionButton: { flex: 1, minHeight: 54, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
-  codexActionButtonUnavailable: { backgroundColor: theme.color.surfaceMuted, borderColor: theme.color.border },
-  codexActionLabel: { color: theme.color.textStrong, fontSize: 11, fontWeight: '800', marginTop: 3 },
-  codexActionLabelUnavailable: { color: theme.color.textMuted },
-  codexActionState: { color: theme.color.textSubtle, fontSize: 8, fontWeight: '700', marginTop: 1 },
-  codexForegroundHint: { color: theme.color.textSubtle, fontSize: 9, marginTop: 5 },
   workspaceControls: { marginTop: 8 },
   workspaceNumberRow: { flexDirection: 'row', gap: 8 },
   workspaceNumberButton: { flex: 1, minHeight: 48, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },

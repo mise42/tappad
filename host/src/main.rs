@@ -9,7 +9,6 @@ mod discovery;
 mod host_contract;
 mod host_surface;
 mod input;
-mod input_chord;
 mod listener;
 mod protocol;
 mod protocol_router;

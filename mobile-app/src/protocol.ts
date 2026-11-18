@@ -18,9 +18,6 @@ export type CapabilityState = 'supported' | 'downgraded' | 'deferred' | 'hidden'
 export type ActionCapability = {
   state: CapabilityState;
   note?: string;
-  scope?: 'os-global' | 'app' | 'unknown' | string;
-  reasonCode?: string;
-  binding?: string;
 };
 
 export type ActionCapabilities = Record<string, ActionCapability>;

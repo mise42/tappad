@@ -34,8 +34,7 @@ Host. The maintained action set includes:
 - window close;
 - Walker launch;
 - lock;
-- media and volume control;
-- the verified Codex voice shortcuts.
+- media and volume control.
 
 Raw shell commands are outside the Host Contract. A new action requires a
 named ID, an Omarchy implementation, capability evidence, and a user-visible
@@ -67,22 +66,7 @@ remains maintained; the browser does not replace it with page-memory storage.
 ## Development and verification
 
 `pnpm --filter mobile-app test` covers QR matching, protocol, input gestures,
-Codex actions, and authorization recovery; `pnpm --filter mobile-app typecheck`
+and authorization recovery; `pnpm --filter mobile-app typecheck`
 checks the native source. Android development uses the co-installable TapPad Dev
 variant described in `mobile-app/README.md`. Installing either client or replacing
 a running Host is a separate deployment step.
-
-### Codex Record
-
-The native Codex group has one `Record` control plus End and Mute. Record sends
-`codex.voice.record`; the Host chooses the registered current-window voice
-command when the verified Codex process is foreground, otherwise the configured
-global voice command. It does not focus Codex before choosing. Missing commands,
-missing bindings, failed foreground inspection, or a window change during
-resolution return an error; there is no fallback from current-window to global.
-Legacy explicit start actions remain in the protocol for older clients.
-
-On installations without a default current-window shortcut, configure the
-registered `composer.startVoiceMode` command in Codex's shortcut settings. This
-is separate from dictation and the OS-global `realtimeVoice` command. Successful
-shortcut dispatch does not establish that a voice session started.

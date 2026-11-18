@@ -346,19 +346,6 @@ body[data-text-entry="active"] textarea {
   gap: 8px;
 }
 
-.action-group {
-  min-height: 68px;
-  margin-top: 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 14px;
-  background: rgba(255, 255, 255, 0.025);
-}
-
-.action-group .panel-heading {
-  margin: 0;
-}
-
 .release-all {
   grid-column: 1 / -1;
   min-height: 46px;

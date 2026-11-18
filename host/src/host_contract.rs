@@ -44,11 +44,6 @@ pub const ACTION_IDS: &[&str] = &[
     "workspace.3",
     "workspace.4",
     "workspace.5",
-    "codex.voice.record",
-    "codex.voice.start",
-    "codex.voice.start_foreground",
-    "codex.voice.end",
-    "codex.voice.toggle_microphone",
 ];
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -56,12 +51,6 @@ pub struct CapabilityStatus {
     pub state: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scope: Option<&'static str>,
-    #[serde(rename = "reasonCode", skip_serializing_if = "Option::is_none")]
-    pub reason_code: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub binding: Option<String>,
 }
 
 impl CapabilityStatus {

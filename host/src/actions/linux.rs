@@ -1,12 +1,7 @@
 //! Omarchy implementations of named desktop actions.
 
-use std::sync::Arc;
+use crate::host_contract::CapabilityStatus;
 
-use tokio::sync::Mutex;
-
-use crate::{host_contract::CapabilityStatus, input::InputDevice};
-
-use super::codex;
 use super::{ActionError, ActionFuture, DesktopActionAdapter, capability, run_shell_command};
 
 pub(super) struct LinuxActionAdapter;
@@ -17,9 +12,6 @@ impl DesktopActionAdapter for LinuxActionAdapter {
     }
 
     fn capability(&self, action: &str) -> CapabilityStatus {
-        if let Some(capability) = codex::capability(action) {
-            return capability;
-        }
         match action {
             "screenrecord.screen.webcam" => capability(
                 "deferred",
@@ -31,11 +23,8 @@ impl DesktopActionAdapter for LinuxActionAdapter {
         }
     }
 
-    fn execute<'a>(&'a self, input: Arc<Mutex<InputDevice>>, action: &'a str) -> ActionFuture<'a> {
+    fn execute<'a>(&'a self, action: &'a str) -> ActionFuture<'a> {
         Box::pin(async move {
-            if codex::is_codex_action(action) {
-                return codex::execute(input, action).await;
-            }
             let Some(command) = linux_command(action) else {
                 return Err(ActionError::unknown(action));
             };
@@ -97,20 +86,7 @@ mod tests {
     #[test]
     fn every_advertised_linux_action_has_an_implementation() {
         for action in ACTION_IDS {
-            assert!(
-                linux_command(action).is_some() || codex::is_codex_action(action),
-                "missing {action}"
-            );
-        }
-    }
-
-    #[test]
-    fn app_scoped_codex_actions_keep_app_scope_when_runtime_state_changes() {
-        let adapter = LinuxActionAdapter;
-        for action in [codex::END_VOICE_ACTION, codex::TOGGLE_MICROPHONE_ACTION] {
-            let capability = adapter.capability(action);
-            assert_eq!(capability.scope, Some("app"));
-            assert!(matches!(capability.state, "supported" | "unavailable"));
+            assert!(linux_command(action).is_some(), "missing {action}");
         }
     }
 

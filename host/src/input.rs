@@ -11,9 +11,6 @@ use enigo::{
 };
 
 #[cfg(target_os = "linux")]
-use crate::input_chord::chord_sequence;
-
-#[cfg(target_os = "linux")]
 use log::warn;
 
 #[cfg(target_os = "linux")]
@@ -162,11 +159,6 @@ impl InputDevice {
     pub fn tap(&mut self, code_name: &str) -> io::Result<()> {
         self.key(code_name, true)?;
         self.key(code_name, false)
-    }
-
-    #[allow(dead_code)]
-    pub fn chord(&mut self, code_names: &[&str]) -> io::Result<()> {
-        chord_sequence(code_names, |code_name, down| self.key(code_name, down))
     }
 
     fn with_reconnect_on_stale_backend(

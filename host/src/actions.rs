@@ -2,15 +2,8 @@
 
 use std::{collections::BTreeMap, fmt, future::Future, pin::Pin, sync::Arc};
 
-use tokio::sync::Mutex;
+use crate::host_contract::{ACTION_IDS, CapabilityStatus};
 
-use crate::{
-    host_contract::{ACTION_IDS, CapabilityStatus},
-    input::InputDevice,
-};
-
-#[cfg(target_os = "linux")]
-mod codex;
 #[cfg(target_os = "linux")]
 mod linux;
 
@@ -30,7 +23,7 @@ impl DesktopActionAdapter for UnsupportedActionAdapter {
         )
     }
 
-    fn execute<'a>(&'a self, _input: Arc<Mutex<InputDevice>>, action: &'a str) -> ActionFuture<'a> {
+    fn execute<'a>(&'a self, action: &'a str) -> ActionFuture<'a> {
         Box::pin(async move {
             Err(ActionError::unavailable(
                 "Non-Omarchy",
@@ -60,43 +53,13 @@ pub const UI_ACTION_IDS: &[&str] = &[
     "media.volume_up",
 ];
 
-pub fn reports_execution_result(action: &str) -> bool {
-    matches!(
-        action,
-        "codex.voice.record"
-            | "codex.voice.start"
-            | "codex.voice.start_foreground"
-            | "codex.voice.end"
-            | "codex.voice.toggle_microphone"
-    )
-}
-
-pub fn execution_success_message(action: &str) -> Option<&'static str> {
-    match action {
-        "codex.voice.record" => Some("The Host dispatched the voice shortcut for the foreground state. Voice session status is not confirmed."),
-        "codex.voice.start" => Some(
-            "The Host dispatched Codex's configured voice hotkey. Voice session status is not confirmed.",
-        ),
-        "codex.voice.start_foreground" => Some(
-            "The Host sent Codex's effective foreground Voice Chat shortcut while Codex was foreground. Voice session status is not confirmed.",
-        ),
-        "codex.voice.end" => Some(
-            "The Host sent Codex's configured End Voice Chat shortcut while Codex was foreground. Voice session status is not confirmed.",
-        ),
-        "codex.voice.toggle_microphone" => Some(
-            "The Host sent Codex's configured microphone shortcut while Codex was foreground. Microphone state is not confirmed.",
-        ),
-        _ => None,
-    }
-}
-
 pub(crate) type ActionFuture<'a> =
     Pin<Box<dyn Future<Output = Result<(), ActionError>> + Send + 'a>>;
 
 pub(crate) trait DesktopActionAdapter: Send + Sync {
     fn platform_name(&self) -> &'static str;
     fn capability(&self, action: &str) -> CapabilityStatus;
-    fn execute<'a>(&'a self, input: Arc<Mutex<InputDevice>>, action: &'a str) -> ActionFuture<'a>;
+    fn execute<'a>(&'a self, action: &'a str) -> ActionFuture<'a>;
 }
 
 pub(crate) struct DesktopActions {
@@ -127,13 +90,9 @@ impl DesktopActions {
         capabilities
     }
 
-    pub async fn run(
-        &self,
-        input: Arc<Mutex<InputDevice>>,
-        action: &str,
-    ) -> Result<(), ActionError> {
+    pub async fn run(&self, action: &str) -> Result<(), ActionError> {
         self.validate(action)?;
-        self.adapter.execute(input, action).await
+        self.adapter.execute(action).await
     }
 
     pub(crate) fn validate(&self, action: &str) -> Result<(), ActionError> {
@@ -177,25 +136,6 @@ pub fn capability(state: &'static str, note: Option<&str>) -> CapabilityStatus {
     CapabilityStatus {
         state,
         note: note.map(ToString::to_string),
-        scope: None,
-        reason_code: None,
-        binding: None,
-    }
-}
-
-#[cfg_attr(all(not(target_os = "linux"), not(test)), allow(dead_code))]
-pub fn scoped_capability(
-    state: &'static str,
-    note: impl Into<String>,
-    scope: &'static str,
-    reason_code: Option<&'static str>,
-) -> CapabilityStatus {
-    CapabilityStatus {
-        state,
-        note: Some(note.into()),
-        scope: Some(scope),
-        reason_code,
-        binding: None,
     }
 }
 
@@ -342,11 +282,7 @@ mod tests {
             capability(self.state, self.note)
         }
 
-        fn execute<'a>(
-            &'a self,
-            _input: Arc<Mutex<InputDevice>>,
-            _action: &'a str,
-        ) -> ActionFuture<'a> {
+        fn execute<'a>(&'a self, _action: &'a str) -> ActionFuture<'a> {
             Box::pin(async { Ok(()) })
         }
     }
@@ -382,65 +318,6 @@ mod tests {
                 "UI action {action} is unregistered"
             );
         }
-        assert_eq!(
-            ACTION_IDS
-                .iter()
-                .filter(|action| action.starts_with("codex.voice."))
-                .count(),
-            5
-        );
-    }
-
-    #[test]
-    fn every_codex_voice_action_reports_dispatch_completion_without_claiming_state() {
-        for action in [
-            "codex.voice.start",
-            "codex.voice.start_foreground",
-            "codex.voice.end",
-            "codex.voice.toggle_microphone",
-        ] {
-            assert!(reports_execution_result(action));
-            let message = execution_success_message(action).expect("Codex dispatch copy");
-            assert!(message.contains("Host"));
-            assert!(message.contains("not confirmed"));
-        }
-        assert!(!reports_execution_result("media.mute"));
-        assert_eq!(execution_success_message("media.mute"), None);
-    }
-
-    #[test]
-    fn capability_metadata_is_additive_for_existing_clients() {
-        let legacy = serde_json::to_value(capability("supported", None)).expect("serialize");
-        assert_eq!(legacy, serde_json::json!({ "state": "supported" }));
-
-        let scoped = serde_json::to_value(scoped_capability(
-            "unavailable",
-            "app-only",
-            "app",
-            Some("codex_app_scope_only"),
-        ))
-        .expect("serialize");
-        assert_eq!(
-            scoped,
-            serde_json::json!({
-                "state": "unavailable",
-                "note": "app-only",
-                "scope": "app",
-                "reasonCode": "codex_app_scope_only"
-            })
-        );
-
-        let mut bound = scoped_capability("supported", "configured", "os-global", None);
-        bound.binding = Some("Command+F3".to_string());
-        assert_eq!(
-            serde_json::to_value(bound).expect("serialize bound capability"),
-            serde_json::json!({
-                "state": "supported",
-                "note": "configured",
-                "scope": "os-global",
-                "binding": "Command+F3"
-            })
-        );
     }
 
     #[test]

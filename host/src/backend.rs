@@ -523,49 +523,18 @@ async fn apply_backend_effect(
             });
         }
         BackendEffect::Cmd { action } => {
-            let reports_execution_result = crate::actions::reports_execution_result(&action);
-            // Preserve the existing start-action rejection shape. App-scoped Codex actions use an
-            // actionResult so a foreground race can return an explicit blocked result.
-            if (!reports_execution_result || action == "codex.voice.start")
-                && let Err(error) = state.actions.validate(&action)
-            {
+            if let Err(error) = state.actions.validate(&action) {
                 let code = match error {
                     crate::actions::ActionError::Unknown { .. } => "unknown_action",
                     _ => "unavailable_action",
                 };
                 return Some(ServerMessage::error(code, error.to_string()));
             }
-            if reports_execution_result {
-                static NEXT_ACTION_TRACE: AtomicU64 = AtomicU64::new(1);
-                let trace = NEXT_ACTION_TRACE.fetch_add(1, Ordering::Relaxed);
-                let started = std::time::Instant::now();
-                info!("action {trace} received client={client_id} action={action}");
-                record_action_attempt(&action);
-                return Some(
-                    match state.actions.run(state.input.clone(), &action).await {
-                        Ok(()) => {
-                            record_action_success(&action);
-                            info!("action {trace} dispatched client={client_id} action={action} elapsed_ms={}", started.elapsed().as_millis());
-                            ServerMessage::action_result(
-                                action.clone(),
-                                "sent",
-                                crate::actions::execution_success_message(&action)
-                                    .unwrap_or("The Host dispatched the configured shortcut."),
-                            )
-                        }
-                        Err(error) => {
-                            record_action_failure(&action, &error.to_string());
-                            warn!("action {trace} failed client={client_id} action={action} elapsed_ms={} error={error}", started.elapsed().as_millis());
-                            ServerMessage::action_result(action, "failed", error.to_string())
-                        }
-                    },
-                );
-            }
             let state = Arc::clone(&state);
             let client_id = client_id.to_string();
             tokio::spawn(async move {
                 record_action_attempt(&action);
-                match state.actions.run(state.input.clone(), &action).await {
+                match state.actions.run(&action).await {
                     Ok(()) => record_action_success(&action),
                     Err(error) => {
                         record_action_failure(&action, &error.to_string());
