@@ -87,6 +87,14 @@ const WORKSPACE_ACTIONS: WorkspaceAction[] = [
   { label: '5', action: 'workspace.5' },
 ];
 
+const MOVE_WINDOW_ACTIONS: WorkspaceAction[] = [
+  { label: '1', action: 'workspace.move_window.1' },
+  { label: '2', action: 'workspace.move_window.2' },
+  { label: '3', action: 'workspace.move_window.3' },
+  { label: '4', action: 'workspace.move_window.4' },
+  { label: '5', action: 'workspace.move_window.5' },
+];
+
 export const RELEASABLE_KEYS = [
   'Escape', 'Tab', 'Enter', 'Backspace', 'PrintScreen',
   'MetaLeft', 'ControlLeft', 'ShiftLeft', 'AltLeft', 'Space',
@@ -156,4 +164,10 @@ function understoodContract(contract: HostContract | undefined) {
 export function supportedWorkspaceActions(capabilities: ActionCapabilities | null) {
   if (!capabilities) return [];
   return WORKSPACE_ACTIONS.filter(({ action }) => capabilities[action]?.state === 'supported');
+}
+
+// Older Hosts do not advertise these, so the move toggle stays hidden for them.
+export function supportedMoveWindowActions(capabilities: ActionCapabilities | null) {
+  if (!capabilities) return [];
+  return MOVE_WINDOW_ACTIONS.filter(({ action }) => capabilities[action]?.state === 'supported');
 }

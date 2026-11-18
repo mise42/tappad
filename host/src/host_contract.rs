@@ -44,6 +44,11 @@ pub const ACTION_IDS: &[&str] = &[
     "workspace.3",
     "workspace.4",
     "workspace.5",
+    "workspace.move_window.1",
+    "workspace.move_window.2",
+    "workspace.move_window.3",
+    "workspace.move_window.4",
+    "workspace.move_window.5",
 ];
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

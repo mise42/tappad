@@ -8,6 +8,7 @@ import {
   readyActionCapabilities,
   serializeMessage,
   socketUrl,
+  supportedMoveWindowActions,
   supportedWorkspaceActions,
   supportsPointerButton,
 } from './protocol.ts';
@@ -116,5 +117,19 @@ test('workspace controls only include actions the Host supports', () => {
     { label: '3', action: 'workspace.3' },
     { label: '4', action: 'workspace.4' },
     { label: '5', action: 'workspace.5' },
+  ]);
+});
+
+test('move-window controls only include move actions the Host supports', () => {
+  assert.deepEqual(supportedMoveWindowActions(null), []);
+  // A Host without move support must not turn focus actions into move buttons.
+  assert.deepEqual(supportedMoveWindowActions({ 'workspace.1': { state: 'supported' } }), []);
+  assert.deepEqual(supportedMoveWindowActions({
+    'workspace.move_window.1': { state: 'supported' },
+    'workspace.move_window.2': { state: 'unavailable' },
+    'workspace.move_window.3': { state: 'supported' },
+  }), [
+    { label: '1', action: 'workspace.move_window.1' },
+    { label: '3', action: 'workspace.move_window.3' },
   ]);
 });

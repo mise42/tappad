@@ -50,6 +50,7 @@ import {
   readyActionCapabilities,
   serializeMessage,
   socketUrl,
+  supportedMoveWindowActions,
   supportedWorkspaceActions,
   type ActionCapabilities,
   type ConnectionState,
@@ -1108,6 +1109,10 @@ function ActionsPanel({ capabilities, capabilityError, sendAction }: {
   const [viewportHeight, setViewportHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
   const workspaceActions = supportedWorkspaceActions(capabilities);
+  const moveWindowActions = supportedMoveWindowActions(capabilities);
+  const [moveWindowMode, setMoveWindowMode] = useState(false);
+  const moving = moveWindowMode && moveWindowActions.length > 0;
+  const workspaceButtons = moving ? moveWindowActions : workspaceActions;
 
   return (
     <ScrollView
@@ -1121,18 +1126,40 @@ function ActionsPanel({ capabilities, capabilityError, sendAction }: {
       {capabilityError ? <Text style={styles.inlineWarning}>Availability check failed: {capabilityError}</Text> : null}
       {workspaceActions.length > 0 ? (
         <View style={styles.actionGroup}>
-          <Text style={styles.groupTitle}>Workspaces</Text>
+          <View style={styles.workspaceHeader}>
+            <Text style={styles.groupTitle}>Workspaces</Text>
+            {moveWindowActions.length > 0 ? (
+              <Pressable
+                accessibilityRole="switch"
+                accessibilityLabel="Move window mode"
+                accessibilityHint="When on, the next workspace number moves the current window there"
+                accessibilityState={{ checked: moving }}
+                onPress={() => setMoveWindowMode((on) => !on)}
+                style={({ pressed }) => [styles.moveWindowToggle, moving && styles.moveWindowToggleActive, pressed && styles.actionButtonPressed]}
+              >
+                <Text style={[styles.moveWindowToggleText, moving && styles.moveWindowToggleTextActive]}>Move window</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {moving ? <Text style={styles.workspaceHint}>Tap a workspace to move the current window there.</Text> : null}
           <View style={styles.workspaceControls}>
             <View style={styles.workspaceNumberRow}>
-              {workspaceActions.map(({ label, action }) => (
+              {workspaceButtons.map(({ label, action }) => (
                 <Pressable
                   key={action}
                   accessibilityRole="button"
-                  accessibilityLabel={`Switch to workspace ${label}`}
-                  onPress={() => sendAction(`Workspace ${label}`, action)}
-                  style={({ pressed }) => [styles.workspaceNumberButton, pressed && styles.actionButtonPressed]}
+                  accessibilityLabel={moving ? `Move window to workspace ${label}` : `Switch to workspace ${label}`}
+                  onPress={() => {
+                    if (moving) {
+                      setMoveWindowMode(false);
+                      sendAction(`Move window to ${label}`, action);
+                    } else {
+                      sendAction(`Workspace ${label}`, action);
+                    }
+                  }}
+                  style={({ pressed }) => [styles.workspaceNumberButton, moving && styles.workspaceNumberButtonMoving, pressed && styles.actionButtonPressed]}
                 >
-                  <Text style={styles.workspaceNumberText}>{label}</Text>
+                  <Text style={[styles.workspaceNumberText, moving && styles.workspaceNumberTextMoving]}>{label}</Text>
                 </Pressable>
               ))}
             </View>
@@ -1283,9 +1310,17 @@ const styles = StyleSheet.create({
   actionButtonText: { color: theme.color.textStrong, fontSize: 13, fontWeight: '700' },
   actionStateUnavailable: { color: theme.color.warning, fontSize: 10, fontWeight: '700', marginTop: 4 },
   workspaceControls: { marginTop: 8 },
+  workspaceHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 30 },
+  workspaceHint: { marginTop: 6, color: theme.color.textMuted, fontSize: 12 },
+  moveWindowToggle: { minHeight: 30, paddingHorizontal: 10, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border },
+  moveWindowToggleActive: { backgroundColor: theme.color.primary, borderColor: theme.color.primary },
+  moveWindowToggleText: { color: theme.color.textStrong, fontSize: 12, fontWeight: '700' },
+  moveWindowToggleTextActive: { color: theme.color.onPrimary },
   workspaceNumberRow: { flexDirection: 'row', gap: 8 },
   workspaceNumberButton: { flex: 1, minHeight: 48, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.surfaceMuted, borderWidth: 1, borderColor: theme.color.border },
   workspaceNumberText: { color: theme.color.textStrong, fontSize: 15, fontWeight: '800' },
+  workspaceNumberButtonMoving: { backgroundColor: theme.color.primary, borderColor: theme.color.primary },
+  workspaceNumberTextMoving: { color: theme.color.onPrimary },
   mediaPanel: { flex: 1, paddingHorizontal: 14, paddingTop: 2 },
   mediaGroup: { marginTop: 16 },
   mediaRow: { flexDirection: 'row', gap: 9, marginTop: 8 },

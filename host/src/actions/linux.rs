@@ -75,6 +75,21 @@ fn linux_command(action: &str) -> Option<&'static str> {
         "workspace.3" => Some("hyprctl eval 'hl.dispatch(hl.dsp.focus({ workspace = \"3\" }))'"),
         "workspace.4" => Some("hyprctl eval 'hl.dispatch(hl.dsp.focus({ workspace = \"4\" }))'"),
         "workspace.5" => Some("hyprctl eval 'hl.dispatch(hl.dsp.focus({ workspace = \"5\" }))'"),
+        "workspace.move_window.1" => {
+            Some("hyprctl eval 'hl.dispatch(hl.dsp.window.move({ workspace = \"1\" }))'")
+        }
+        "workspace.move_window.2" => {
+            Some("hyprctl eval 'hl.dispatch(hl.dsp.window.move({ workspace = \"2\" }))'")
+        }
+        "workspace.move_window.3" => {
+            Some("hyprctl eval 'hl.dispatch(hl.dsp.window.move({ workspace = \"3\" }))'")
+        }
+        "workspace.move_window.4" => {
+            Some("hyprctl eval 'hl.dispatch(hl.dsp.window.move({ workspace = \"4\" }))'")
+        }
+        "workspace.move_window.5" => {
+            Some("hyprctl eval 'hl.dispatch(hl.dsp.window.move({ workspace = \"5\" }))'")
+        }
         _ => None,
     }
 }
@@ -124,6 +139,25 @@ mod tests {
         for (action, _) in expected {
             assert!(
                 ACTION_IDS.contains(&action),
+                "{action} is outside the Host Contract"
+            );
+        }
+    }
+
+    #[test]
+    fn move_window_actions_move_the_active_window_and_follow_it() {
+        for workspace in 1..=5 {
+            let action = format!("workspace.move_window.{workspace}");
+            let expected_command = format!(
+                "hyprctl eval 'hl.dispatch(hl.dsp.window.move({{ workspace = \"{workspace}\" }}))'"
+            );
+            assert_eq!(
+                linux_command(&action),
+                Some(expected_command.as_str()),
+                "wrong mapping for {action}"
+            );
+            assert!(
+                ACTION_IDS.contains(&action.as_str()),
                 "{action} is outside the Host Contract"
             );
         }
